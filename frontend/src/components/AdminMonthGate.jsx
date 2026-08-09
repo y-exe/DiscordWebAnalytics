@@ -36,6 +36,10 @@ export default function AdminMonthGate({ year, month }) {
       .catch(() => setState("login"));
   }, [targetMonth, targetYear]);
 
+  useEffect(() => {
+    if (state !== "checking") window.dispatchEvent(new Event("app-loaded"));
+  }, [state]);
+
   async function login(event) {
     event.preventDefault();
     setError("");
