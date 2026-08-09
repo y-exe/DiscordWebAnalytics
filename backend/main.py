@@ -7,7 +7,6 @@ import os
 import sys
 import asyncio
 import time
-import diskcache
 import tempfile
 from dotenv import load_dotenv
 from pydantic import BaseModel
@@ -16,6 +15,15 @@ from pathlib import Path
 from datetime import datetime
 import socket
 import logging
+import base64
+import hashlib
+import hmac
+from zoneinfo import ZoneInfo
+
+try:
+    from .safe_cache import SafeDiskCache
+except ImportError:
+    from safe_cache import SafeDiskCache
 
 logging.basicConfig(
     level=logging.INFO,
@@ -29,7 +37,8 @@ if sys.platform == 'win32':
 
 load_dotenv()
 raw_dsn = os.getenv("DB_DSN")
-API_SECRET = os.getenv("API_SECRET", "default_insecure_secret_change_me")
+API_SECRET = os.getenv("API_SECRET", "").strip()
+ADMIN_SESSION_SECRET = os.getenv("ADMIN_SESSION_SECRET", "").strip()
 
 if not raw_dsn:
     BASE_DIR = Path(__file__).resolve().parent
@@ -38,10 +47,15 @@ if not raw_dsn:
         ENV_PATH = BASE_DIR.parent / "bot" / ".env"
     load_dotenv(dotenv_path=ENV_PATH)
     raw_dsn = os.getenv("DB_DSN")
-    API_SECRET = os.getenv("API_SECRET", "default_insecure_secret_change_me")
+    API_SECRET = os.getenv("API_SECRET", "").strip()
+    ADMIN_SESSION_SECRET = os.getenv("ADMIN_SESSION_SECRET", "").strip()
 
 if not raw_dsn:
     sys.exit("ERROR: DB_DSN not found.")
+if len(API_SECRET) < 32:
+    sys.exit("ERROR: API_SECRET must be set to at least 32 characters.")
+if len(ADMIN_SESSION_SECRET) < 32:
+    sys.exit("ERROR: ADMIN_SESSION_SECRET must be set to at least 32 characters.")
 
 def adjust_db_dsn(dsn: str) -> str:
     in_container = os.path.exists('/.dockerenv')
@@ -74,14 +88,6 @@ ALLOWED_ORIGINS = [
     "https://www.ymkw.top",
     "http://localhost:4321",
     "http://127.0.0.1:4321",
-]
-
-# ドメイン名のみのリスト
-ALLOWED_DOMAINS = [
-    "ymkw.top",
-    "www.ymkw.top",
-    "localhost",
-    "127.0.0.1"
 ]
 
 WHITELIST_CHANNEL_IDS = [
@@ -122,7 +128,7 @@ BOTTOM_CHANNEL_CATEGORY_IDS = {1355760969187463378}
 
 pool = None
 cache_dir = os.path.join(tempfile.gettempdir(), "ymkw_api_diskcache_v14")
-cache = diskcache.Cache(cache_dir)
+cache = SafeDiskCache(cache_dir, size_limit=int(os.getenv("CACHE_SIZE_LIMIT_BYTES", str(256 * 1024 * 1024))))
 
 def get_cache(key: str):
     return cache.get(key)
@@ -130,55 +136,8 @@ def get_cache(key: str):
 def set_cache(key: str, data: Any, ttl: int = 600):
     cache.set(key, data, expire=ttl)
 
-def is_domain_allowed(domain: Optional[str]) -> bool:
-    if not domain:
-        return False
-    return domain in ALLOWED_DOMAINS or domain.endswith(".ymkw.top") or domain.endswith(".pages.dev")
-
-def get_cors_origin(request: Request) -> Optional[str]:
-    origin = request.headers.get("origin")
-    if not origin:
-        referer = request.headers.get("referer")
-        if referer:
-            try:
-                from urllib.parse import urlparse
-                parsed = urlparse(referer)
-                clean_ref = f"{parsed.scheme}://{parsed.hostname}"
-                if parsed.port:
-                    clean_ref += f":{parsed.port}"
-                if clean_ref in ALLOWED_ORIGINS or is_domain_allowed(parsed.hostname):
-                    return clean_ref
-            except:
-                pass
-        return None
-    
-    clean_origin = origin.rstrip('/')
-    if clean_origin in ALLOWED_ORIGINS:
-        return origin
-    
-    try:
-        from urllib.parse import urlparse
-        parsed = urlparse(clean_origin)
-        if is_domain_allowed(parsed.hostname):
-            return origin
-    except:
-        pass
-    return None
-
 def cors_json_response(request: Request, status_code: int, content: dict, block_reason: Optional[str] = None):
     response = JSONResponse(status_code=status_code, content=content)
-    origin = get_cors_origin(request)
-    
-    if not origin and (is_domain_allowed(request.headers.get("host")) or not request.headers.get("origin")):
-        origin = "https://www.ymkw.top"
-
-    if origin:
-        response.headers["Access-Control-Allow-Origin"] = origin
-        response.headers["Access-Control-Allow-Credentials"] = "true"
-        response.headers["Access-Control-Allow-Methods"] = "*"
-        response.headers["Access-Control-Allow-Headers"] = "*"
-    
-    response.headers["Vary"] = "Origin"
     if block_reason:
         response.headers["X-Debug-Block"] = block_reason
     return response
@@ -194,16 +153,50 @@ DB_RATE_LIMIT_WINDOW = int(os.getenv("DB_RATE_LIMIT_WINDOW", "60"))
 DB_MAX_REQUESTS = int(os.getenv("DB_RATE_LIMIT_MAX_REQUESTS", "135"))
 DB_BOT_MAX_REQUESTS = int(os.getenv("DB_RATE_LIMIT_BOT_MAX_REQUESTS", "540"))
 BLOCK_DURATION = int(os.getenv("RATE_LIMIT_BLOCK_DURATION", "600"))
+TRUST_CLOUDFLARE_PROXY = os.getenv("TRUST_CLOUDFLARE_PROXY", "false").lower() == "true"
 LIVE_TOTAL_CACHE_TTL = 1800
 TOTAL_CACHE_WARM_INTERVAL = 600
+ADMIN_COOKIE_NAME = "__Secure-ymkw_admin"
+ADMIN_SESSION_MAX_AGE = 60 * 60 * 24
 
 def get_client_ip(request: Request) -> str:
-    forwarded_for = request.headers.get("X-Forwarded-For", "").split(",", 1)[0].strip()
-    return (
-        request.headers.get("CF-Connecting-IP")
-        or forwarded_for
-        or (request.client.host if request.client else "unknown")
-    )
+    if TRUST_CLOUDFLARE_PROXY:
+        cloudflare_ip = request.headers.get("CF-Connecting-IP", "").strip()
+        if cloudflare_ip:
+            return cloudflare_ip
+    return request.client.host if request.client else "unknown"
+
+def is_api_client(request: Request) -> bool:
+    supplied_key = request.headers.get("X-API-KEY", "")
+    return bool(supplied_key) and hmac.compare_digest(supplied_key, API_SECRET)
+
+def verify_admin_session(token: Optional[str]) -> bool:
+    if not token:
+        return False
+    try:
+        version, expires_raw, supplied_signature = token.split(".", 2)
+        if version != "v1" or len(expires_raw) != 10 or not expires_raw.isdigit():
+            return False
+        expires_at = int(expires_raw)
+        now = int(time.time())
+        if expires_at <= now or expires_at > now + ADMIN_SESSION_MAX_AGE + 60:
+            return False
+        payload = f"{version}.{expires_raw}"
+        signature = hmac.new(ADMIN_SESSION_SECRET.encode(), payload.encode(), hashlib.sha256).digest()
+        expected_signature = base64.urlsafe_b64encode(signature).decode().rstrip("=")
+        return hmac.compare_digest(supplied_signature, expected_signature)
+    except (ValueError, TypeError):
+        return False
+
+def require_month_access(request: Request, year: int, month: int) -> bool:
+    now = datetime.now(ZoneInfo("Asia/Tokyo"))
+    is_restricted = (year, month) >= (now.year, now.month)
+    if is_restricted and not (is_api_client(request) or verify_admin_session(request.cookies.get(ADMIN_COOKIE_NAME))):
+        raise HTTPException(status_code=403, detail="This month's report is not public yet.")
+    return is_restricted
+
+def set_month_cache_control(response: Response, is_restricted: bool) -> None:
+    response.headers["Cache-Control"] = "private, no-store" if is_restricted else "public, max-age=600"
 
 def is_db_heavy_path(path: str) -> bool:
     return path.startswith(DB_HEAVY_PREFIXES)
@@ -231,34 +224,12 @@ async def security_and_rate_limit_middleware(request: Request, call_next):
     if request.method == "OPTIONS":
         return await call_next(request)
 
-    client_api_key = request.headers.get("X-API-KEY")
-    is_bot = client_api_key == API_SECRET
-
-    origin = request.headers.get("origin")
-    referer = request.headers.get("referer")
-    
-    is_allowed_origin = bool(get_cors_origin(request))
-    is_allowed_referer = False
-    if referer:
-        try:
-            from urllib.parse import urlparse
-            ref_domain = urlparse(referer).hostname
-            if is_domain_allowed(ref_domain):
-                is_allowed_referer = True
-        except:
-            pass
-    
+    is_bot = is_api_client(request)
     path = request.url.path
     is_public_path = path in PUBLIC_PATHS
-    is_website = is_allowed_origin or is_allowed_referer
 
     if request.method in WRITE_METHODS and not is_bot and not is_public_path:
         return cors_json_response(request, status_code=401, content={"detail": "API key required."}, block_reason="write-api-key-required")
-
-    if not (is_bot or is_website or is_public_path):
-        if path not in PUBLIC_PATHS:
-            logger.warning(f"Access Denied: Origin={origin}, Referer={referer}, Path={request.url.path}")
-            return cors_json_response(request, status_code=403, content={"detail": "Access Denied"}, block_reason="security-policy")
 
     client_ip = get_client_ip(request)
     
@@ -279,7 +250,9 @@ async def security_and_rate_limit_middleware(request: Request, call_next):
 
     try:
         response = await call_next(request)
-        response.headers["Vary"] = "Origin"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["X-Frame-Options"] = "DENY"
         return response
     except Exception as e:
         logger.error(f"Unhandled exception during request: {request.method} {request.url.path}", exc_info=True)
@@ -326,6 +299,7 @@ async def startup():
 @app.on_event("shutdown")
 async def shutdown():
     if pool: await pool.close()
+    cache.close()
 
 class ChannelItem(BaseModel):
     id: str
@@ -357,6 +331,8 @@ def format_user_rank_response(row):
     }
 
 def get_month_bounds(year: int, month: int) -> Tuple[datetime, datetime]:
+    if year < 2020 or year > 2100:
+        raise HTTPException(status_code=400, detail="year must be between 2020 and 2100")
     if month < 1 or month > 12:
         raise HTTPException(status_code=400, detail="month must be between 1 and 12")
     start = datetime(year, month, 1)
@@ -370,6 +346,9 @@ def escape_like(value: str) -> str:
 async def get_channel_scope_ids(channel_id: Optional[int]) -> Optional[List[int]]:
     if not channel_id:
         return None
+
+    if channel_id != PRIVATE_CHAT_CHANNEL_ID and channel_id not in WHITELIST_CHANNEL_IDS:
+        raise HTTPException(status_code=404, detail="Channel not found")
 
     if channel_id == PRIVATE_CHAT_CHANNEL_ID:
         rows = await pool.fetch(
@@ -443,7 +422,7 @@ async def get_channels(response: Response):
     return res
 
 @app.get("/users/search")
-async def search_users(q: str):
+async def search_users(q: str = Query(..., min_length=1, max_length=64)):
     search_query = q.strip()
     if not search_query: return []
     query = f"SELECT user_id, display_name, username, avatar_url FROM users u WHERE (display_name ILIKE $1 OR username ILIKE $1) AND {DELETED_USER_FILTER} LIMIT 10"
@@ -451,10 +430,11 @@ async def search_users(q: str):
     return [{"user_id": str(r['user_id']), "display_name": r['display_name'], "username": r['username'], "avatar": r['avatar_url']} for r in rows]
 
 @app.get("/ranking/monthly/{year}/{month}", response_model=List[RankingItem])
-async def get_monthly_ranking(year: int, month: int, response: Response, channel_id: Optional[int] = Query(None)):
+async def get_monthly_ranking(year: int, month: int, response: Response, request: Request, channel_id: Optional[int] = Query(None)):
+    is_restricted = require_month_access(request, year, month)
     ckey = f"rank_m_{year}_{month}_{channel_id}"
     cached = get_cache(ckey)
-    response.headers["Cache-Control"] = "public, max-age=600"
+    set_month_cache_control(response, is_restricted)
     if cached: return cached
     start_date, end_date = get_month_bounds(year, month)
     channel_ids = await get_channel_scope_ids(channel_id)
@@ -484,10 +464,11 @@ async def get_total_ranking(response: Response, channel_id: Optional[int] = Quer
     return res
 
 @app.get("/users/{user_id}/rank/monthly/{year}/{month}")
-async def get_monthly_user_rank(user_id: int, year: int, month: int, response: Response, channel_id: Optional[int] = Query(None)):
+async def get_monthly_user_rank(user_id: int, year: int, month: int, response: Response, request: Request, channel_id: Optional[int] = Query(None)):
+    is_restricted = require_month_access(request, year, month)
     ckey = f"user_rank_m_{user_id}_{year}_{month}_{channel_id}"
     cached = get_cache(ckey)
-    response.headers["Cache-Control"] = "public, max-age=600"
+    set_month_cache_control(response, is_restricted)
     if cached is not None:
         return cached
 
@@ -575,10 +556,13 @@ async def get_total_user_rank(user_id: int, response: Response, channel_id: Opti
     return res
 
 @app.get("/stats/history/{year}/{month}")
-async def get_daily_history(year: int, month: int, response: Response, channel_id: Optional[int] = Query(None), user_id: Optional[List[str]] = Query(None)):
+async def get_daily_history(year: int, month: int, response: Response, request: Request, channel_id: Optional[int] = Query(None), user_id: Optional[List[str]] = Query(None)):
+    is_restricted = require_month_access(request, year, month)
+    if user_id and len(user_id) > 5:
+        raise HTTPException(status_code=400, detail="At most 5 user_id values are allowed")
     ckey = f"hist_m_{year}_{month}_{channel_id}_{user_id}"
     cached = get_cache(ckey)
-    response.headers["Cache-Control"] = "public, max-age=600"
+    set_month_cache_control(response, is_restricted)
     if cached: return cached
     start_date, end_date = get_month_bounds(year, month)
     params = [start_date, end_date]
@@ -612,6 +596,8 @@ async def get_daily_history(year: int, month: int, response: Response, channel_i
 
 @app.get("/stats/history/total")
 async def get_total_history(response: Response, channel_id: Optional[int] = Query(None), user_id: Optional[List[str]] = Query(None), end_date: Optional[datetime] = Query(None)):
+    if user_id and len(user_id) > 5:
+        raise HTTPException(status_code=400, detail="At most 5 user_id values are allowed")
     ckey = f"hist_t_{channel_id}_{user_id}_{end_date}"
     cached = get_cache(ckey)
     ttl = 86400 if end_date else LIVE_TOTAL_CACHE_TTL
@@ -644,10 +630,11 @@ async def get_total_history(response: Response, channel_id: Optional[int] = Quer
     return res
 
 @app.get("/stats/heatmap/{year}/{month}")
-async def get_monthly_heatmap(year: int, month: int, response: Response, channel_id: Optional[int] = Query(None)):
+async def get_monthly_heatmap(year: int, month: int, response: Response, request: Request, channel_id: Optional[int] = Query(None)):
+    is_restricted = require_month_access(request, year, month)
     ckey = f"heat_m_{year}_{month}_{channel_id}"
     cached = get_cache(ckey)
-    response.headers["Cache-Control"] = "public, max-age=600"
+    set_month_cache_control(response, is_restricted)
     if cached: return cached
     start_date, end_date = get_month_bounds(year, month)
     p = [start_date, end_date]; f = ["created_at >= $1", "created_at < $2", "is_bot = FALSE"]
@@ -673,10 +660,11 @@ async def get_total_heatmap(response: Response, channel_id: Optional[int] = Quer
     return res
 
 @app.get("/stats/channels_distribution/{year}/{month}")
-async def get_monthly_channel_distribution(year: int, month: int, response: Response):
+async def get_monthly_channel_distribution(year: int, month: int, response: Response, request: Request):
+    is_restricted = require_month_access(request, year, month)
     ckey = f"pie_m_{year}_{month}"
     cached = get_cache(ckey)
-    response.headers["Cache-Control"] = "public, max-age=600"
+    set_month_cache_control(response, is_restricted)
     if cached: return cached
     start_date, end_date = get_month_bounds(year, month)
     rows = await pool.fetch(
@@ -733,10 +721,11 @@ async def get_total_channel_distribution(response: Response, end_date: Optional[
     return res
 
 @app.get("/stats/analysis/{year}/{month}")
-async def get_monthly_analysis(year: int, month: int, response: Response, channel_id: Optional[int] = Query(None), user_id: Optional[str] = Query(None)):
+async def get_monthly_analysis(year: int, month: int, response: Response, request: Request, channel_id: Optional[int] = Query(None), user_id: Optional[str] = Query(None, max_length=20)):
+    is_restricted = require_month_access(request, year, month)
     ckey = f"ana_m_{year}_{month}_{channel_id}_{user_id}"
     cached = get_cache(ckey)
-    response.headers["Cache-Control"] = "public, max-age=600"
+    set_month_cache_control(response, is_restricted)
     if cached: return cached
     start_date, end_date = get_month_bounds(year, month)
     p = [start_date, end_date]; f = ["created_at >= $1", "created_at < $2", "is_bot = FALSE"]
@@ -822,57 +811,12 @@ async def warm_total_cache_loop():
         await warm_total_cache_once()
         await asyncio.sleep(TOTAL_CACHE_WARM_INTERVAL)
 
-@app.get("/debug/db")
-async def debug_db():
-    if not pool:
-        return {"status": "error", "message": "Connection pool not initialized"}
-    try:
-        tables = ["channels", "users", "messages"]
-        counts = {}
-        for t in tables:
-            try:
-                r = await pool.fetchval(f"SELECT count(*) FROM {t}")
-                counts[t] = r
-            except Exception as te:
-                counts[t] = f"Error: {str(te)}"
-        message_range = await pool.fetchrow('''
-            SELECT
-                min(created_at) AS first_at,
-                max(created_at) AS last_at,
-                count(*) FILTER (WHERE is_bot = FALSE) AS human_messages
-            FROM messages
-        ''')
-        
-        from urllib.parse import urlparse
-        parsed = urlparse(DB_DSN)
-        
-        return {
-            "status": "ok",
-            "host": parsed.hostname,
-            "database": parsed.path.lstrip('/'),
-            "counts": counts,
-            "messages": {
-                "first_at": message_range["first_at"],
-                "last_at": message_range["last_at"],
-                "human_messages": message_range["human_messages"],
-            },
-            "in_container": os.path.exists('/.dockerenv')
-        }
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
-
-@app.get("/debug/clear-cache")
-async def clear_app_cache():
-    cache.clear()
-    return {"status": "cache cleared"}
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
-    allow_origin_regex=r"https://.*\.ymkw\.top|https://.*\.pages\.dev",
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "OPTIONS"],
+    allow_headers=["Accept", "Content-Type"],
     expose_headers=["X-Debug-Block"],
 )
 

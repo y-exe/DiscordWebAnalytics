@@ -3,6 +3,17 @@ import Layout from '../../../layouts/Layout.astro';
 import Dashboard from '../../../components/Dashboard.jsx';
 import { fetchAPI } from "@/lib/api";
 import { formatNumber } from "@/lib/seo";
+import {
+    ADMIN_COOKIE_NAME,
+    ADMIN_SESSION_MAX_AGE,
+    canAttemptAdminLogin,
+    clearAdminLoginFailures,
+    createAdminSession,
+    isAdminAuthConfigured,
+    verifyAdminPassword,
+    verifyAdminSession,
+    recordAdminLoginFailure,
+} from "@/lib/admin-auth";
 
 const { year, month } = Astro.params;
 const url = Astro.url;
@@ -16,24 +27,42 @@ const targetMonth = parseInt(month || "0");
 const isValidMonth = Number.isInteger(targetYear) && Number.isInteger(targetMonth) && targetYear >= 2020 && targetMonth >= 1 && targetMonth <= 12;
 const isRestricted = (targetYear > currentYear) || (targetYear === currentYear && targetMonth >= currentMonth);
 
-const ADMIN_PASSWORD_HASH = "2f11bf70add2518a3c218295612a992132459445ffd2e375db85402341b3d5f3";
-const isAuthorized = Astro.cookies.get('admin_auth')?.value === 'true';
+let isAuthorized = await verifyAdminSession(Astro.cookies.get(ADMIN_COOKIE_NAME)?.value);
+let authError = "";
 
-if (Astro.request.method === "POST") {
+if (Astro.request.method === "POST" && isRestricted) {
     try {
-        const formData = await Astro.request.formData();
-        const inputPassword = formData.get("password")?.toString() || "";
-        const msgBuffer = new TextEncoder().encode(inputPassword);
-        const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
-        const hashArray = Array.from(new Uint8Array(hashBuffer));
-        const inputHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-
-        if (inputHash === ADMIN_PASSWORD_HASH) {
-            Astro.cookies.set('admin_auth', 'true', { path: '/', maxAge: 86400, httpOnly: true, secure: true, sameSite: 'lax' });
-            return Astro.redirect(url.pathname + url.search);
+        const requestOrigin = Astro.request.headers.get("origin");
+        const clientKey = (Astro.request.headers.get("CF-Connecting-IP") || "local").slice(0, 64);
+        if (requestOrigin && requestOrigin !== url.origin) {
+            authError = "不正な送信元からのリクエストです。";
+        } else if (!canAttemptAdminLogin(clientKey)) {
+            Astro.response.headers.set("Retry-After", "600");
+            authError = "試行回数が多すぎます。10分後に再度お試しください。";
+        } else if (!isAdminAuthConfigured()) {
+            authError = "管理者認証が設定されていません。";
+        } else {
+            const formData = await Astro.request.formData();
+            const inputPassword = formData.get("password")?.toString() || "";
+            if (await verifyAdminPassword(inputPassword)) {
+                clearAdminLoginFailures(clientKey);
+                const cookieOptions = {
+                    path: '/',
+                    maxAge: ADMIN_SESSION_MAX_AGE,
+                    httpOnly: true,
+                    secure: true,
+                    sameSite: 'lax' as const,
+                    ...(url.hostname.endsWith("ymkw.top") ? { domain: ".ymkw.top" } : {}),
+                };
+                Astro.cookies.set(ADMIN_COOKIE_NAME, await createAdminSession(), cookieOptions);
+                return Astro.redirect(url.pathname + url.search, 303);
+            }
+            recordAdminLoginFailure(clientKey);
+            authError = "パスワードが違います。";
         }
     } catch (e) {
         console.error("Auth Error:", e);
+        authError = "認証処理に失敗しました。";
     }
 }
 
@@ -93,6 +122,7 @@ const rankingSchema = seoRanking.length > 0 ? {
                     
                     <form method="POST" class="space-y-4" data-astro-reload>
                         <input type="password" name="password" placeholder="パスワード" class="w-full px-5 py-4 bg-gray-50 border border-gray-200 rounded-2xl text-center font-bold outline-none focus:border-blue-500 transition-all" required />
+                        {authError && <p class="text-sm font-bold text-red-600" role="alert">{authError}</p>}
                         <button type="submit" class="w-full py-4 bg-gray-900 text-white font-bold rounded-2xl hover:bg-black transition-all">解除</button>
                     </form>
                     

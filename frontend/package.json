@@ -1,7 +1,7 @@
 {
   "name": "count",
   "type": "module",
-  "version": "0.0.1",
+  "version": "0.1.1",
   "scripts": {
     "dev": "astro dev --port 4321",
     "build": "astro build",
@@ -9,34 +9,33 @@
     "astro": "astro"
   },
   "dependencies": {
-    "@astrojs/cloudflare": "^12.6.12",
-    "@astrojs/node": "^9.5.1",
-    "@astrojs/react": "^4.4.2",
-    "@astrojs/tailwind": "^6.0.2",
+    "@astrojs/cloudflare": "14.2.0",
+    "@astrojs/react": "6.0.2",
     "@radix-ui/react-avatar": "^1.1.11",
     "@radix-ui/react-dropdown-menu": "^2.1.16",
     "@radix-ui/react-select": "^2.2.6",
     "@radix-ui/react-slot": "^1.2.4",
     "@radix-ui/react-tabs": "^1.1.13",
-    "@tailwindcss/vite": "^4.1.18",
     "@types/nprogress": "^0.2.3",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
-    "astro": "^5.16.6",
+    "astro": "7.2.0",
+    "autoprefixer": "10.4.21",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
     "framer-motion": "^12.34.3",
     "lucide-react": "^0.562.0",
-    "next": "^16.1.6",
     "next-themes": "^0.4.6",
     "nprogress": "^0.2.0",
-    "react": "^19.2.3",
-    "react-dom": "^19.2.3",
+    "postcss": "8.5.26",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
     "react-icons": "^5.6.0",
     "recharts": "^3.6.0",
     "tailwind-merge": "^3.5.0",
     "tailwindcss": "^3.4.17",
-    "tailwindcss-animate": "^1.0.7"
+    "tailwindcss-animate": "^1.0.7",
+    "wrangler": "4.120.0"
   }
 }

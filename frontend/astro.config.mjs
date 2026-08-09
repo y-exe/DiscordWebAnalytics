@@ -1,6 +1,5 @@
 import { defineConfig } from 'astro/config';
 import react from '@astrojs/react';
-import tailwind from '@astrojs/tailwind';
 import cloudflare from '@astrojs/cloudflare';
 
 export default defineConfig({
@@ -9,12 +8,12 @@ export default defineConfig({
   adapter: cloudflare({
     mode: 'directory',
   }),
-  integrations: [react(), tailwind()],
+  integrations: [react()],
   vite: {
     server: {
       allowedHosts: ['ymkw.top'],
       proxy: Object.fromEntries(
-        ['/channels', '/users', '/ranking', '/stats', '/debug'].map((path) => [
+        ['/channels', '/users', '/ranking', '/stats'].map((path) => [
           path,
           {
             target: 'https://api.ymkw.top',

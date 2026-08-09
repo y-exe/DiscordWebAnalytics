@@ -63,7 +63,7 @@ export default function MobileNavigation({ user = {}, currentPath = '', queryPar
     };
 
     const handleResetAuth = () => {
-        const cookies = ['user_id', 'user_name', 'user_avatar', 'admin_auth'];
+        const cookies = ['user_id', 'user_name', 'user_avatar'];
         cookies.forEach(c => {
             document.cookie = `${c}=; path=/; max-age=0`;
         });

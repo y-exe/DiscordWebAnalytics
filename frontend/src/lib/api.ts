@@ -6,10 +6,6 @@ interface FetchAPIOptions extends Omit<RequestInit, 'signal'> {
     retries?: number;
 }
 
-/**
- * APIエラー用のカスタムクラス
- * ステータスコードを保持できるようにする
- */
 export class APIError extends Error {
     status: number;
     url: string;
@@ -22,19 +18,11 @@ export class APIError extends Error {
     }
 }
 
-/**
- * リトライ・タイムアウト・SSR Refererヘッダー付きのfetchユーティリティ
- * - サーバーサイド（SSR）実行時は自動でRefererヘッダーを付与（403防止）
- * - 429/5xxエラー時は指数バックオフでリトライ
- * - AbortControllerでタイムアウト制御
- */
 export async function fetchAPI(
     path: string,
     options: FetchAPIOptions = {}
 ): Promise<Response> {
     const { retries = 2, ...fetchOptions } = options;
-
-    // SSR（サーバーサイド）ではOrigin/Refererが自動付与されないため手動で追加
     const isServer = typeof window === "undefined";
     const baseUrl = isServer ? SSR_API_URL : API_URL;
     const url = path.startsWith("http") ? path : `${baseUrl}${path}`;
@@ -50,16 +38,13 @@ export async function fetchAPI(
             const res = await fetch(url, {
                 ...fetchOptions,
                 headers,
+                credentials: fetchOptions.credentials ?? "include",
             });
 
-            // 成功 or 404 はそのまま返す（リトライ不要）
             if (res.ok || res.status === 404) return res;
-
-            // 全ての non-ok レスポンス（404除く）を APIError として扱う
             const apiError = new APIError(`HTTP ${res.status}`, res.status, url);
             lastError = apiError;
 
-            // 429 or 5xx はリトライ対象
             if (res.status === 429 || res.status >= 500) {
                 if (attempt < retries) {
                     await delay(1000 * Math.pow(2, attempt));
@@ -67,13 +52,10 @@ export async function fetchAPI(
                 }
             }
 
-            // リトライ対象外（403等）またはリトライ上限到達
             throw apiError;
         } catch (err) {
-            // APIErrorでない場合（ネットワークエラー等）はAPIErrorでラップしてURL情報を保持
             if (!(err instanceof APIError)) {
                 lastError = new APIError(err instanceof Error ? err.message : "Network failure", 0, url);
-                // ネットワークエラーの名前を保持（Dashboard側でNetworkError判定に使うため）
                 if (err instanceof Error) {
                     lastError.name = err.name;
                 }
@@ -81,7 +63,6 @@ export async function fetchAPI(
                 lastError = err;
             }
 
-            // リトライ可能な場合のみ続行
             if (attempt < retries) {
                 await delay(1000 * Math.pow(2, attempt));
                 continue;

@@ -1,5 +1,5 @@
 ---
-import { ViewTransitions } from "astro:transitions";
+import { ClientRouter } from "astro:transitions";
 import Sidebar from "../components/Sidebar.astro";
 import Header from "../components/Header.astro";
 import FooterSection from "../components/FooterSection.tsx";
@@ -7,6 +7,7 @@ import LoginModal from "../components/LoginModal.jsx";
 import LoadingScreen from "../components/LoadingScreen.astro";
 import MobileNavigation from "../components/MobileNavigation.jsx";
 import ThemeProvider from "../components/ThemeProvider.jsx";
+import { serializeJsonLd } from "../lib/seo";
 import "nprogress/nprogress.css";
 import "../styles/global.css";
 
@@ -195,21 +196,21 @@ const extraJsonLd = Array.isArray(jsonLd) ? jsonLd : [jsonLd];
 
     <script
       type="application/ld+json"
-      set:html={JSON.stringify(websiteSchema)}
+      set:html={serializeJsonLd(websiteSchema)}
     />
     <script
       type="application/ld+json"
-      set:html={JSON.stringify(webPageSchema)}
+      set:html={serializeJsonLd(webPageSchema)}
     />
     <script
       type="application/ld+json"
-      set:html={JSON.stringify(datasetSchema)}
+      set:html={serializeJsonLd(datasetSchema)}
     />
     {
       breadcrumbSchema && (
         <script
           type="application/ld+json"
-          set:html={JSON.stringify(breadcrumbSchema)}
+          set:html={serializeJsonLd(breadcrumbSchema)}
         />
       )
     }
@@ -217,12 +218,12 @@ const extraJsonLd = Array.isArray(jsonLd) ? jsonLd : [jsonLd];
       extraJsonLd.filter(Boolean).map((schema: any) => (
         <script
           type="application/ld+json"
-          set:html={JSON.stringify(schema)}
+          set:html={serializeJsonLd(schema)}
         />
       ))
     }
 
-    <ViewTransitions />
+    <ClientRouter />
     <style is:global>
       #nprogress .bar {
         background: #3b82f6 !important;

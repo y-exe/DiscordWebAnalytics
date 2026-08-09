@@ -46,6 +46,20 @@ Discordの今までのチャット履歴等を全て取得し、視覚化する�
 - frontend/ : Webダッシュボード (Astro + React)
 ```
 
+## 環境変数について
+
+本番起動前に、`backend/.env.example`と`frontend/.env.example`を参照して環境変数を設定してください。
+- `API_SECRET`: 32文字以上のランダム値。(バックエンド用)
+- `ADMIN_SESSION_SECRET`: 32文字以上のランダム値。バックエンドとフロントエンド同様
+- `ADMIN_PASSWORD_HASH`: ソルト付きPBKDF2-HMAC-SHA-256形式の管理者パスワードハッシュ
+- `TRUST_CLOUDFLARE_PROXY`: オリジンへの直接接続を遮断した場合に限り`true`にします。
+
+`ADMIN_PASSWORD_HASH`は次のコマンドで生成し、出力された1行全体をCloudflareの環境変数へ設定します。
+
+```bash
+python scripts/generate_admin_password_hash.py
+```
+
 ## ライセンス
 
 [AGPL-3.0](LICENSE)  
