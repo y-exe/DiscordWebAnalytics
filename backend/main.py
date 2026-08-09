@@ -18,6 +18,7 @@ import logging
 import base64
 import hashlib
 import hmac
+import ipaddress
 import re
 from zoneinfo import ZoneInfo
 
@@ -159,6 +160,7 @@ DB_MAX_REQUESTS = int(os.getenv("DB_RATE_LIMIT_MAX_REQUESTS", "135"))
 DB_BOT_MAX_REQUESTS = int(os.getenv("DB_RATE_LIMIT_BOT_MAX_REQUESTS", "540"))
 BLOCK_DURATION = int(os.getenv("RATE_LIMIT_BLOCK_DURATION", "600"))
 TRUST_CLOUDFLARE_PROXY = os.getenv("TRUST_CLOUDFLARE_PROXY", "false").lower() == "true"
+CLOUDFLARE_TRUSTED_PROXY_CIDRS_RAW = os.getenv("CLOUDFLARE_TRUSTED_PROXY_CIDRS", "")
 LIVE_TOTAL_CACHE_TTL = 1800
 TOTAL_CACHE_WARM_INTERVAL = 600
 ADMIN_COOKIE_NAME = "__Secure-ymkw_admin"
@@ -166,12 +168,46 @@ ADMIN_SESSION_MAX_AGE = 60 * 60 * 24
 ADMIN_LOGIN_WINDOW = 10 * 60
 ADMIN_LOGIN_LIMIT = 5
 
+def parse_trusted_proxy_cidrs(raw_value: str) -> Tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...]:
+    networks = []
+    for raw_cidr in raw_value.split(","):
+        cidr = raw_cidr.strip()
+        if not cidr:
+            continue
+        try:
+            networks.append(ipaddress.ip_network(cidr, strict=False))
+        except ValueError as exc:
+            raise ValueError(f"Invalid CIDR in CLOUDFLARE_TRUSTED_PROXY_CIDRS: {cidr}") from exc
+    return tuple(networks)
+
+try:
+    CLOUDFLARE_TRUSTED_PROXY_CIDRS = parse_trusted_proxy_cidrs(CLOUDFLARE_TRUSTED_PROXY_CIDRS_RAW)
+except ValueError as exc:
+    sys.exit(f"ERROR: {exc}")
+
+if TRUST_CLOUDFLARE_PROXY and not CLOUDFLARE_TRUSTED_PROXY_CIDRS:
+    logger.warning(
+        "TRUST_CLOUDFLARE_PROXY is enabled without CLOUDFLARE_TRUSTED_PROXY_CIDRS; "
+        "CF-Connecting-IP will not be trusted."
+    )
+
+def is_trusted_cloudflare_proxy(peer_ip: str) -> bool:
+    try:
+        address = ipaddress.ip_address(peer_ip)
+    except ValueError:
+        return False
+    return any(address in network for network in CLOUDFLARE_TRUSTED_PROXY_CIDRS)
+
 def get_client_ip(request: Request) -> str:
-    if TRUST_CLOUDFLARE_PROXY:
+    peer_ip = request.client.host if request.client else "unknown"
+    if TRUST_CLOUDFLARE_PROXY and is_trusted_cloudflare_proxy(peer_ip):
         cloudflare_ip = request.headers.get("CF-Connecting-IP", "").strip()
         if cloudflare_ip:
-            return cloudflare_ip
-    return request.client.host if request.client else "unknown"
+            try:
+                return str(ipaddress.ip_address(cloudflare_ip))
+            except ValueError:
+                logger.warning("Ignored invalid CF-Connecting-IP from trusted proxy %s", peer_ip)
+    return peer_ip
 
 def is_api_client(request: Request) -> bool:
     supplied_key = request.headers.get("X-API-KEY", "")
@@ -179,6 +215,22 @@ def is_api_client(request: Request) -> bool:
 
 def verify_admin_session(token: Optional[str]) -> bool:
     if not token:
+        return False
+    try:
+        version, expires_raw, supplied_signature = token.split(".", 2)
+        if version != "v1" or len(expires_raw) != 10 or not expires_raw.isdigit():
+            return False
+        if not re.fullmatch(r"[A-Za-z0-9_-]{43}", supplied_signature):
+            return False
+        expires_at = int(expires_raw)
+        now = int(time.time())
+        if expires_at <= now or expires_at > now + ADMIN_SESSION_MAX_AGE + 60:
+            return False
+        payload = f"{version}.{expires_raw}"
+        signature = hmac.new(ADMIN_SESSION_SECRET.encode(), payload.encode(), hashlib.sha256).digest()
+        expected_signature = base64.urlsafe_b64encode(signature).decode().rstrip("=")
+        return hmac.compare_digest(supplied_signature, expected_signature)
+    except (ValueError, TypeError):
         return False
 
 def verify_admin_password(password: str) -> bool:
@@ -204,21 +256,7 @@ def create_admin_session() -> str:
 
 def admin_origin_allowed(request: Request) -> bool:
     origin = request.headers.get("Origin")
-    return origin is None or origin in ALLOWED_ORIGINS
-    try:
-        version, expires_raw, supplied_signature = token.split(".", 2)
-        if version != "v1" or len(expires_raw) != 10 or not expires_raw.isdigit():
-            return False
-        expires_at = int(expires_raw)
-        now = int(time.time())
-        if expires_at <= now or expires_at > now + ADMIN_SESSION_MAX_AGE + 60:
-            return False
-        payload = f"{version}.{expires_raw}"
-        signature = hmac.new(ADMIN_SESSION_SECRET.encode(), payload.encode(), hashlib.sha256).digest()
-        expected_signature = base64.urlsafe_b64encode(signature).decode().rstrip("=")
-        return hmac.compare_digest(supplied_signature, expected_signature)
-    except (ValueError, TypeError):
-        return False
+    return origin in ALLOWED_ORIGINS
 
 def require_month_access(request: Request, year: int, month: int) -> bool:
     now = datetime.now(ZoneInfo("Asia/Tokyo"))
@@ -898,4 +936,4 @@ app.add_middleware(
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8070)
+    uvicorn.run(app, host="0.0.0.0", port=8070, proxy_headers=False)
