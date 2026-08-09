@@ -1,4 +1,5 @@
 **/.env
+**/.dev.vars
 .env
 
 **/__pycache__/

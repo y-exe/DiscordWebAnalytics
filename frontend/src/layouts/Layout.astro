@@ -21,11 +21,7 @@ const {
   jsonLd = [],
 } = Astro.props;
 
-const userId = Astro.cookies.get("user_id")?.value;
-const userNameRaw = Astro.cookies.get("user_name")?.value;
-const userName = userNameRaw ? decodeURIComponent(userNameRaw) : null;
-const userAvatar = Astro.cookies.get("user_avatar")?.value;
-const user = { id: userId, name: userName, avatar: userAvatar };
+const user = { id: null, name: null, avatar: null };
 
 const currentPath = Astro.url.pathname;
 const queryParams = Astro.url.search;

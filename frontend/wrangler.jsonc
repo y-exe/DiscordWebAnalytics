@@ -1,0 +1,17 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "ymkw-top",
+  "compatibility_date": "2026-08-08",
+  "workers_dev": false,
+  "assets": {
+    "directory": "./dist",
+    "html_handling": "drop-trailing-slash",
+    "not_found_handling": "404-page"
+  },
+  "routes": [
+    {
+      "pattern": "ymkw.top",
+      "custom_domain": true
+    }
+  ]
+}

@@ -2,8 +2,7 @@
 import Layout from "../layouts/Layout.astro";
 import { ArrowLeft, SearchX } from "lucide-react";
 
-const from = Astro.url.searchParams.get("from") || "";
-const backHref = from.startsWith("/") ? from.split("?")[0] : "/";
+const backHref = "/";
 ---
 
 <Layout title="Channel Not Available">

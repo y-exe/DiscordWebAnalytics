@@ -1,7 +1,5 @@
 ---
-const errorCode = Astro.url.searchParams.get("code") || "502";
-const displayCode = /^\d{3}$/u.test(errorCode) ? errorCode : "502";
-Astro.response.headers.set("Cache-Control", "no-store");
+const displayCode = "502";
 ---
 
 <!doctype html>

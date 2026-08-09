@@ -1,146 +1,26 @@
 ---
-import Layout from '../../../layouts/Layout.astro';
-import Dashboard from '../../../components/Dashboard.jsx';
-import { fetchAPI } from "@/lib/api";
-import { formatNumber } from "@/lib/seo";
-import {
-    ADMIN_COOKIE_NAME,
-    ADMIN_SESSION_MAX_AGE,
-    canAttemptAdminLogin,
-    clearAdminLoginFailures,
-    createAdminSession,
-    isAdminAuthConfigured,
-    verifyAdminPassword,
-    verifyAdminSession,
-    recordAdminLoginFailure,
-} from "@/lib/admin-auth";
+import Layout from "../../../layouts/Layout.astro";
+import AdminMonthGate from "../../../components/AdminMonthGate.jsx";
+
+export function getStaticPaths() {
+  const paths = [];
+  for (let year = 2020; year <= 2100; year += 1) {
+    for (let month = 1; month <= 12; month += 1) paths.push({ params: { year: String(year), month: String(month) } });
+  }
+  return paths;
+}
 
 const { year, month } = Astro.params;
-const url = Astro.url;
-
-const nowUTC = new Date();
-const jstDate = new Date(nowUTC.getTime() + (9 * 60 * 60 * 1000));
-const currentYear = jstDate.getUTCFullYear();
-const currentMonth = jstDate.getUTCMonth() + 1;
-const targetYear = parseInt(year || "0");
-const targetMonth = parseInt(month || "0");
-const isValidMonth = Number.isInteger(targetYear) && Number.isInteger(targetMonth) && targetYear >= 2020 && targetMonth >= 1 && targetMonth <= 12;
-const isRestricted = (targetYear > currentYear) || (targetYear === currentYear && targetMonth >= currentMonth);
-
-let isAuthorized = await verifyAdminSession(Astro.cookies.get(ADMIN_COOKIE_NAME)?.value);
-let authError = "";
-
-if (Astro.request.method === "POST" && isRestricted) {
-    try {
-        const requestOrigin = Astro.request.headers.get("origin");
-        const clientKey = (Astro.request.headers.get("CF-Connecting-IP") || "local").slice(0, 64);
-        if (requestOrigin && requestOrigin !== url.origin) {
-            authError = "不正な送信元からのリクエストです。";
-        } else if (!canAttemptAdminLogin(clientKey)) {
-            Astro.response.headers.set("Retry-After", "600");
-            authError = "試行回数が多すぎます。10分後に再度お試しください。";
-        } else if (!isAdminAuthConfigured()) {
-            authError = "管理者認証が設定されていません。";
-        } else {
-            const formData = await Astro.request.formData();
-            const inputPassword = formData.get("password")?.toString() || "";
-            if (await verifyAdminPassword(inputPassword)) {
-                clearAdminLoginFailures(clientKey);
-                const cookieOptions = {
-                    path: '/',
-                    maxAge: ADMIN_SESSION_MAX_AGE,
-                    httpOnly: true,
-                    secure: true,
-                    sameSite: 'lax' as const,
-                    ...(url.hostname.endsWith("ymkw.top") ? { domain: ".ymkw.top" } : {}),
-                };
-                Astro.cookies.set(ADMIN_COOKIE_NAME, await createAdminSession(), cookieOptions);
-                return Astro.redirect(url.pathname + url.search, 303);
-            }
-            recordAdminLoginFailure(clientKey);
-            authError = "パスワードが違います。";
-        }
-    } catch (e) {
-        console.error("Auth Error:", e);
-        authError = "認証処理に失敗しました。";
-    }
-}
-
-const channelId = url.searchParams.get('channel');
-let userId = Astro.cookies.get('user_id')?.value;
-if (userId === 'guest') userId = null;
-
-if (!isValidMonth) {
-    Astro.response.status = 404;
-}
-
-Astro.response.headers.set('Cache-Control', isRestricted || !isValidMonth ? 'no-store' : 'public, s-maxage=600');
-
-const pageTitle = `${year}年${month}月 月間レポート`;
-const pageDescription = `${year}年${month}月のやまかわてるき鯖の統計情報。メッセージ数ランキング、アクティビティヒートマップ、チャットの盛り上がりを分析したレポート。`;
-
-let seoRanking: any[] = [];
-if (isValidMonth && !isRestricted) {
-    try {
-        const rankingRes = await fetchAPI(`/ranking/monthly/${targetYear}/${targetMonth}`, { retries: 1 });
-        if (rankingRes.ok) {
-            const ranking = await rankingRes.json();
-            if (Array.isArray(ranking)) seoRanking = ranking.slice(0, 10);
-        }
-    } catch (e) {
-        console.error("Monthly SEO Fetch Error:", e);
-    }
-}
-
+const targetYear = Number(year);
+const targetMonth = Number(month);
+const pageTitle = `${targetYear}年${targetMonth}月レポート`;
+const pageDescription = `${targetYear}年${targetMonth}月のやまかわてるき鯖の活動データです。`;
 const breadcrumbs = [
-    { name: "トップ", item: "https://www.ymkw.top/" },
-    { name: "月間レポート", item: "https://www.ymkw.top/" },
-    { name: `${year}年${month}月`, item: `https://www.ymkw.top/month/${year}/${month}` }
+  { name: "トップ", item: "https://ymkw.top/" },
+  { name: "月別レポート", item: `https://ymkw.top/month/${year}/${month}` },
 ];
-
-const rankingSchema = seoRanking.length > 0 ? {
-    "@context": "https://schema.org",
-    "@type": "ItemList",
-    name: `${year}年${month}月 月間ランキング上位`,
-    itemListElement: seoRanking.slice(0, 10).map((item, index) => ({
-        "@type": "ListItem",
-        position: index + 1,
-        name: item.display_name || item.username,
-        description: `${formatNumber(item.count)}回`,
-    })),
-} : null;
 ---
 
-<Layout title={pageTitle} description={pageDescription} breadcrumbs={breadcrumbs} noindex={isRestricted || !isValidMonth} jsonLd={rankingSchema}>
-    {isRestricted && !isAuthorized ? (
-        <>
-            <div class="h-[60vh] flex flex-col items-center justify-center animate-fade-in p-4">
-                <div class="bg-white p-10 rounded-[2.5rem] border border-gray-200 shadow-2xl max-w-sm w-full text-center relative overflow-hidden">
-                    <div class="absolute top-0 left-0 w-full h-2 bg-blue-600"></div>
-                    <h2 class="text-2xl font-black text-gray-900 mb-2 font-outfit">未公開エリア</h2>
-                    <p class="text-sm text-gray-500 mb-8 leading-relaxed">{year}年{month}月のレポートは未公開です。パスワードを入力してください。</p>
-                    
-                    <form method="POST" class="space-y-4" data-astro-reload>
-                        <input type="password" name="password" placeholder="パスワード" class="w-full px-5 py-4 bg-gray-50 border border-gray-200 rounded-2xl text-center font-bold outline-none focus:border-blue-500 transition-all" required />
-                        {authError && <p class="text-sm font-bold text-red-600" role="alert">{authError}</p>}
-                        <button type="submit" class="w-full py-4 bg-gray-900 text-white font-bold rounded-2xl hover:bg-black transition-all">解除</button>
-                    </form>
-                    
-                    <button onclick="history.back()" class="mt-8 text-xs font-bold text-gray-400 hover:text-gray-900 flex items-center justify-center gap-2 mx-auto">前のページに戻る</button>
-                </div>
-            </div>
-            <script is:inline>
-                (function(){
-                    const screen = document.getElementById('loading-screen');
-                    if(screen) {
-                        screen.style.opacity = '0';
-                        screen.style.pointerEvents = 'none';
-                        setTimeout(() => screen.style.display = 'none', 500);
-                    }
-                })();
-            </script>
-        </>
-    ) : (
-        <Dashboard client:load year={year} month={month} channelId={channelId} userId={userId} />
-    )}
+<Layout title={pageTitle} description={pageDescription} breadcrumbs={breadcrumbs}>
+  <AdminMonthGate client:load year={year} month={month} />
 </Layout>

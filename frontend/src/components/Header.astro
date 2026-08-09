@@ -8,104 +8,24 @@ import {
   BreadcrumbPage,
 } from "./ui/breadcrumb.tsx";
 import { Home } from "lucide-react";
-import { LogoutButton, LoginButton } from "./AuthButtons.jsx";
-import { fetchAPI } from "@/lib/api";
+import { LoginButton } from "./AuthButtons.jsx";
 
 const { url } = Astro;
-const channelId = url.searchParams.get("channel");
-
-let channelName = "すべてのチャンネル";
-if (channelId) {
-  try {
-    const res = await fetchAPI("/channels");
-    if (res.ok) {
-      const channels: any[] = await res.json();
-      const found = channels.find(
-        (c: any) => String(c.id) === String(channelId),
-      );
-      if (found) channelName = found.name;
-    }
-  } catch (e) {}
-}
-
-const userId = Astro.cookies.get("user_id")?.value;
-const userNameRaw = Astro.cookies.get("user_name")?.value;
-const userName = userNameRaw ? decodeURIComponent(userNameRaw) : null;
-const userAvatar = Astro.cookies.get("user_avatar")?.value;
-
 const parts = url.pathname.split("/").filter(Boolean);
-const mode = parts[0] === "all" ? "累計" : "月間";
+const mode = parts[0] === "all" ? "総合" : "月別";
 const year = parts[1];
 const month = parts[2];
 ---
 
-<header
-  class="h-16 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b border-border hidden md:flex items-center justify-between px-8 sticky top-0 z-40"
->
+<header class="h-16 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b border-border hidden md:flex items-center justify-between px-8 sticky top-0 z-40">
   <Breadcrumb>
     <BreadcrumbList>
-      <BreadcrumbItem>
-        <BreadcrumbLink href="/" className="flex items-center gap-1.5"
-          ><Home className="w-4 h-4" />ホーム</BreadcrumbLink
-        >
-      </BreadcrumbItem>
+      <BreadcrumbItem><BreadcrumbLink href="/" className="flex items-center gap-1.5"><Home className="w-4 h-4" />ホーム</BreadcrumbLink></BreadcrumbItem>
       <BreadcrumbSeparator />
-      <BreadcrumbItem>
-        <BreadcrumbLink href="#">{mode}</BreadcrumbLink>
-      </BreadcrumbItem>
+      <BreadcrumbItem><BreadcrumbLink href="#">{mode}</BreadcrumbLink></BreadcrumbItem>
       {year && !url.pathname.includes("/all") && <BreadcrumbSeparator />}
-      {
-        year && !url.pathname.includes("/all") && (
-          <BreadcrumbItem>
-            <BreadcrumbPage>
-              {year}年{month ? ` ${month}月` : ""}
-            </BreadcrumbPage>
-          </BreadcrumbItem>
-        )
-      }
-      <BreadcrumbSeparator />
-      <BreadcrumbItem>
-        <BreadcrumbPage
-          class={channelId
-            ? "text-primary bg-primary/10 px-2 py-0.5 rounded font-bold flex items-center gap-1"
-            : "flex items-center gap-1"}
-        >
-          {channelId && <span class="w-1.5 h-1.5 rounded-full bg-primary" />}
-          {channelName}
-        </BreadcrumbPage>
-      </BreadcrumbItem>
+      {year && !url.pathname.includes("/all") && <BreadcrumbItem><BreadcrumbPage>{year}年{month ? ` ${month}月` : ""}</BreadcrumbPage></BreadcrumbItem>}
     </BreadcrumbList>
   </Breadcrumb>
-
-  <div class="flex items-center gap-3">
-    {
-      userId && userId !== "guest" ? (
-        <>
-          <div class="text-right hidden md:flex flex-col justify-center flex-shrink-0">
-            <p
-              class="text-sm font-bold text-foreground leading-none truncate max-w-[300px] whitespace-nowrap"
-              title={userName}
-            >
-              {userName}
-            </p>
-          </div>
-
-          {userAvatar && userAvatar !== "None" ? (
-            <img
-              src={userAvatar}
-              class="w-9 h-9 rounded-full border border-border shadow-sm object-cover flex-shrink-0"
-            />
-          ) : (
-            <div class="w-9 h-9 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-sm font-bold shadow-sm flex-shrink-0">
-              {userName ? userName[0] : "U"}
-            </div>
-          )}
-
-          <LogoutButton client:load />
-        </>
-      ) : (
-        <LoginButton client:load />
-      )
-    }
-  </div>
+  <LoginButton client:load />
 </header>

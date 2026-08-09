@@ -3,8 +3,6 @@ import Layout from "../layouts/Layout.astro";
 import { RiBarChartBoxFill, RiCalendarScheduleFill } from "react-icons/ri";
 import { InteractiveHoverButton } from "../components/ui/InteractiveHoverButton";
 
-export const prerender = false;
-
 const date = new Date();
 date.setDate(0);
 const prevMonthYear = date.getFullYear();

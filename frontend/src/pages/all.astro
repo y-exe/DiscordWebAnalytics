@@ -1,58 +1,16 @@
 ---
 import Layout from "../layouts/Layout.astro";
 import AllTimeDashboard from "../components/AllTimeDashboard.jsx";
-import { fetchAPI } from "@/lib/api";
-import { formatNumber } from "@/lib/seo";
 
-const url = Astro.url;
-const channelId = url.searchParams.get("channel");
-let userId = Astro.cookies.get("user_id")?.value;
-if (userId === "guest") userId = null;
-
-let seoRanking: any[] = [];
-try {
-  const rankingRes = await fetchAPI("/ranking/total", { retries: 1 });
-  if (rankingRes.ok) {
-    const ranking = await rankingRes.json();
-    if (Array.isArray(ranking)) seoRanking = ranking.slice(0, 10);
-  }
-} catch (e) {
-  console.error("All Time SEO Fetch Error:", e);
-}
-
-Astro.response.headers.set("Cache-Control", "public, s-maxage=600, max-age=300");
-
-const pageTitle = "累計レポート";
-const pageDescription =
-  "やまかわてるき鯖の全期間統計。最新データに基づく累計ランキング、活動履歴、ユーザー別統計を確認できます。";
+const pageTitle = "総合ランキング";
+const pageDescription = "やまかわてるき鯖の総合ランキングと活動データです。";
 
 const breadcrumbs = [
-  { name: "トップ", item: "https://www.ymkw.top/" },
-  { name: "累計レポート", item: "https://www.ymkw.top/all" },
+  { name: "トップ", item: "https://ymkw.top/" },
+  { name: "総合ランキング", item: "https://ymkw.top/all" },
 ];
-
-const rankingSchema = seoRanking.length > 0 ? {
-  "@context": "https://schema.org",
-  "@type": "ItemList",
-  name: "累計ランキング上位",
-  itemListElement: seoRanking.slice(0, 10).map((item, index) => ({
-    "@type": "ListItem",
-    position: index + 1,
-    name: item.display_name || item.username,
-    description: `${formatNumber(item.count)}回`,
-  })),
-} : null;
 ---
 
-<Layout
-  title={pageTitle}
-  description={pageDescription}
-  breadcrumbs={breadcrumbs}
-  jsonLd={rankingSchema}
->
-  <AllTimeDashboard
-    client:load
-    channelId={channelId}
-    userId={userId}
-  />
+<Layout title={pageTitle} description={pageDescription} breadcrumbs={breadcrumbs}>
+  <AllTimeDashboard client:load channelId={null} userId={null} />
 </Layout>
