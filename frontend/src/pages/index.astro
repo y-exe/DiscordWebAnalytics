@@ -316,7 +316,9 @@ const description = "やまかわてるき鯖の公認WEBダッシュボード�
     height: 50%;
     color: #fff;
     font-size: calc(var(--loader-size) * .52);
-    animation: 4s cubic-bezier(.22, 1, .36, 1) infinite;
+    animation-duration: 4s;
+    animation-iteration-count: infinite;
+    animation-timing-function: cubic-bezier(.22, 1, .36, 1);
     animation-play-state: running;
     backface-visibility: hidden;
     will-change: transform;
