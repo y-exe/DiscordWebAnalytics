@@ -3,7 +3,6 @@ import {EffectComposer} from 'three/addons/postprocessing/EffectComposer.js';
 import {RenderPass} from 'three/addons/postprocessing/RenderPass.js';
 import {UnrealBloomPass} from 'three/addons/postprocessing/UnrealBloomPass.js';
 
-// Keeps the 3D layer transparent while allowing bloom to render at a lower resolution.
 export function transparentBloom(renderer, scene, camera, options={}) {
  const {motionBlur={value:0},bloomScale=1,bloomStrength=1.5,samples=0,enableMotionBlur=false}=options;
  const base=new THREE.WebGLRenderTarget(1,1,{type:THREE.HalfFloatType,samples});

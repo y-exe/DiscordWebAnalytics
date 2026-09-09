@@ -219,7 +219,7 @@ const extraJsonLd = Array.isArray(jsonLd) ? jsonLd : [jsonLd];
       ))
     }
 
-    <ClientRouter />
+    {!hideNavigation && <ClientRouter />}
     <style is:global>
       #nprogress .bar {
         background: #3b82f6 !important;
@@ -290,7 +290,7 @@ const extraJsonLd = Array.isArray(jsonLd) ? jsonLd : [jsonLd];
         )
       }
 
-      <LoginModal client:load />
+      {!hideNavigation && <LoginModal client:load />}
 
       <script>
         import NProgress from "nprogress";

@@ -3,11 +3,9 @@ import * as THREE from 'three';import {GLTFLoader} from 'three/addons/loaders/GL
 const requestedQuality=new URLSearchParams(location.search).get('quality');
 const memory=navigator.deviceMemory??4,cores=navigator.hardwareConcurrency??4;
 const touchDevice=matchMedia('(pointer:coarse)').matches;
-// Medium is the ceiling. Keep the former "high" query value as a compatible alias.
 const quality=requestedQuality==='low'?'low':requestedQuality==='medium'||requestedQuality==='high'?'medium':(matchMedia('(prefers-reduced-motion: reduce)').matches||memory<=2||cores<=2?'low':touchDevice?(memory>=8&&cores>=8?'medium':'low'):'medium');
 const profile={
  medium:{pixelRatio:1.25,postProcessing:true,bloomScale:.5,bloomStrength:1.5,samples:0,motionBlur:false,maxFrameRate:touchDevice?45:0},
- // Render the whole image below native resolution, but retain a faint red bloom.
  low:{pixelRatio:.75,postProcessing:true,bloomScale:.35,bloomStrength:.48,samples:0,motionBlur:false,maxFrameRate:30},
 }[quality];
 document.documentElement.dataset.threeQuality=quality;
@@ -17,7 +15,6 @@ const camera=new THREE.PerspectiveCamera(36,innerWidth/innerHeight,.01,100);came
 function frameAtNativeResolution(){camera.zoom=2.84;const shift=innerWidth<=760?.18:.17;camera.setViewOffset(innerWidth,innerHeight,-innerWidth*shift,0,innerWidth,innerHeight);camera.updateProjectionMatrix();}
 frameAtNativeResolution();addEventListener('resize',frameAtNativeResolution);
 const focus=new THREE.Vector3(0,1.57,1.9);function softbox(c,i,w,h,x,y,z){const l=new THREE.RectAreaLight(c,i,w,h);l.position.set(x,y,z);l.lookAt(focus);scene.add(l)}softbox(0xffffff,9,5.5,4,-3.5,6,4.5);if(quality!=='low'){softbox(0xffffff,6.5,4,3.2,2.8,4.4,-2.3);softbox(0xfff5ea,2,3,2,4,2.8,3);softbox(0xffffff,4,3.5,3.5,-1,5.5,-1)}const fill=new THREE.DirectionalLight(0xffffff,.3);fill.position.set(-2,2,4);scene.add(fill);
-// Object-space mould texture: stable across UV seams and camera rotation.
 function addMouldGrain(m){
  m.onBeforeCompile=shader=>{
  shader.vertexShader=shader.vertexShader.replace('#include <common>','#include <common>\nvarying vec3 grainPosition;').replace('#include <begin_vertex>','#include <begin_vertex>\ngrainPosition=position;');
@@ -41,7 +38,6 @@ function addMouldGrain(m){
  m.customProgramCacheKey=()=> 'mould-grain-v1';
 }
 const recMaterials=[],useDetailShaders=quality!=='low';
-// Preserve the opening pose while spinning around the crown's top centre.
 const presentation=new THREE.Group(),turntable=new THREE.Group();
 presentation.position.copy(focus);presentation.rotation.set(-5*Math.PI/180,0,-12*Math.PI/180);
 presentation.add(turntable);scene.add(presentation);
@@ -50,12 +46,8 @@ const motionBlur={value:0};
 function animatePresentation(time){
  if(motionStart===null)return;
  const seconds=(time-motionStart)/1000;
- // Slow only through the first 20°, then hand the final 10° to the fast spin.
- // 20° over 25.2s is two-thirds of the former slow speed.
  const slowDuration=25.2,fastDuration=.675;
  const phase=seconds%(slowDuration+fastDuration);
- // Integrate a smooth velocity pulse: both sections meet at the same nonzero
- // speed and zero acceleration, including the 360 -> 0 loop boundary.
  const slowSpeed=20/slowDuration;
  const t=Math.max(0,(phase-slowDuration)/fastDuration);
  const pulse=t*t*t*(10+t*(-15+6*t));
@@ -130,7 +122,6 @@ m.customProgramCacheKey=()=> 'cotton-weave-v2';m.sheen=.35;m.sheenColor.setRGB(.
    m.needsUpdate=true;processed.set(original,m);return m;
   };
   o.material=Array.isArray(o.material)?o.material.map(tune):tune(o.material);
- // Optical assembly gets dedicated finishes, never the moulded body grain.
  if(useDetailShaders&&/convex aspheric/i.test(o.name)){
   o.material=o.material.clone();
   o.material.onBeforeCompile=shader=>{
@@ -161,7 +152,6 @@ m.customProgramCacheKey=()=> 'cotton-weave-v2';m.sheen=.35;m.sheenColor.setRGB(.
   };o.material.customProgramCacheKey=()=> 'machined-optical-barrel-v1';
  }
  });
- // Opaque optical backing blocks the textured outer housing behind the lens.
 const opticalBacking=new THREE.Mesh(
  new THREE.PlaneGeometry(.465,.47),
  new THREE.MeshBasicMaterial({color:0x030303,side:THREE.DoubleSide})
@@ -169,8 +159,6 @@ const opticalBacking=new THREE.Mesh(
 opticalBacking.name='H11 optical smooth black backing';
 opticalBacking.position.set(.272,1.737,2.158);
 g.scene.add(opticalBacking);
-// Enlarge every camera and mount part around the attachment point, including
-// detached exported lens meshes. World-preserving attach prevents misalignment.
 g.scene.updateMatrixWorld(true);
 const assembly=new THREE.Group();assembly.name='GoPro and mount - 125 percent';
 assembly.position.set(0,1.11,1.355);g.scene.add(assembly);g.scene.updateMatrixWorld(true);
@@ -179,7 +167,6 @@ parts.forEach(o=>assembly.attach(o));assembly.scale.setScalar(1.25);
 g.scene.updateMatrixWorld(true);
 const crownTop=g.scene.getObjectByName('Top fabric button');
 const pivot=crownTop?new THREE.Box3().setFromObject(crownTop).getCenter(new THREE.Vector3()):new THREE.Vector3(0,1.95,0);
-// R(p - oldPivot) + oldPivot == R(p - pivot) + compensatedPosition.
 presentation.position.copy(pivot).sub(focus).applyQuaternion(presentation.quaternion).add(focus);
 g.scene.position.sub(pivot);turntable.add(g.scene);motionStart=performance.now();document.querySelector('#hint').textContent='DRAG TO EXPLORE · SCROLL TO ZOOM';
 },undefined,()=>{document.querySelector('#hint').textContent='3D MODEL COULD NOT LOAD';dispatchSceneReady()});addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)});let lastRenderTime=0;renderer.setAnimationLoop((time)=>{if(document.hidden)return;const frameInterval=profile.maxFrameRate?1000/profile.maxFrameRate:0;if(frameInterval&&time-lastRenderTime<frameInterval)return;lastRenderTime=time;recMaterials.forEach(m=>m.emissiveIntensity=24);animatePresentation(time);controls.update();renderFrame();});

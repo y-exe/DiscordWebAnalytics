@@ -25,7 +25,6 @@ export default function MonthSelector({ currentYear, currentMonth, dark = false 
 
   return (
     <div className="relative">
-      <label className={`text-[11px] font-bold uppercase tracking-wider mb-2 block px-2 ${dark ? 'text-white/35' : 'text-muted-foreground'}`}>Target Period</label>
       <button onClick={() => setIsOpen(!isOpen)} className={`w-full text-sm rounded-xl p-3 flex items-center justify-between transition-all shadow-sm focus:ring-2 focus:ring-ring outline-none ${dark ? 'bg-white/6 border border-white/10 text-white hover:border-white/25' : 'bg-background border border-border text-foreground hover:border-primary/50'}`}>
         <div className="flex items-center gap-2"><Calendar className={`w-4 h-4 ${dark ? 'text-white/45' : 'text-muted-foreground'}`} /><span className="font-medium">{currentLabel}</span></div>
         <ChevronDown className={`w-4 h-4 transition-transform ${dark ? 'text-white/45' : 'text-muted-foreground'} ${isOpen ? 'rotate-180' : ''}`} />

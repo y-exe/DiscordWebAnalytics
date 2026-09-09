@@ -2,6 +2,15 @@
 @tailwind components;
 @tailwind utilities;
 
+@font-face {
+  font-family: "LINE Seed Results";
+  src: url("/fonts/LINESeedJP-ExtraBold.ttf") format("truetype");
+  font-display: swap;
+}
+.result-number {
+  font-family: "LINE Seed Results", Arial, sans-serif;
+}
+
 @layer base {
   :root {
     --background: 0 0% 100%;
@@ -67,10 +76,4 @@
   body {
     @apply bg-background text-foreground;
   }
-}
-
-::view-transition-old(legal-active-tab),
-::view-transition-new(legal-active-tab) {
-  animation-duration: 460ms;
-  animation-timing-function: cubic-bezier(0.16, 1.35, 0.32, 1);
 }

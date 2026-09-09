@@ -47,7 +47,7 @@ export default function SidebarContent({ currentPath, queryParams, pageMode, cur
 
     return (
         <div className="px-6 pb-12 space-y-8 flex-1 overflow-y-auto custom-scrollbar flex flex-col">
-            <div className="bg-muted p-1.5 rounded-2xl flex text-[10px] font-black uppercase tracking-widest border border-border shadow-inner">
+            <div className="bg-muted p-1.5 rounded-2xl flex text-base tracking-normal border border-border shadow-inner result-number">
                 <a href={monthlyBaseUrl} className={`flex-1 py-2.5 text-center rounded-xl transition-all ${pageMode === 'month' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>月間</a>
                 <a href={allTimeUrl} className={`flex-1 py-2.5 text-center rounded-xl transition-all ${pageMode === 'open' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>累計</a>
             </div>

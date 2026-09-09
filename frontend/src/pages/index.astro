@@ -67,6 +67,10 @@ const description = "やまかわてるき鯖の公認WEBダッシュボード�
           <SocialReel label="Discord鯖" />
         </a>
       </nav>
+      <nav class="legal-links" aria-label="サイトポリシー">
+        <a href="/terms">terms</a>
+        <a href="/privacy">privacy</a>
+      </nav>
       <span class="copyright">© 2026 ymkw.top</span>
       <div id="site-loader" class="site-loader" role="status" aria-label="ホームページを読み込んでいます">
         <div class="site-loader-grid" aria-hidden="true">
@@ -236,7 +240,7 @@ const description = "やまかわてるき鯖の公認WEBダッシュボード�
     bottom: 0;
     left: .035em;
     height: .17em;
-    background: #ffe33c;
+    background: linear-gradient(90deg, #ffe33c 0%, #ffb21c 50%, #ff7a00 100%);
     content: "";
   }
   .site-copy {
@@ -265,6 +269,20 @@ const description = "やまかわてるき鯖の公認WEBダッシュボード�
     font-weight: 700;
     letter-spacing: 0;
   }
+  .legal-links {
+    position: fixed;
+    z-index: 10;
+    right: var(--content-inset);
+    bottom: calc(var(--content-inset) + clamp(30px, 2.25vw, 38px));
+    display: flex;
+    gap: .85em;
+    font-family: "Outfit", Arial, sans-serif;
+    font-size: clamp(17px, 1.55vw, 22px);
+    font-weight: 700;
+    letter-spacing: 0;
+  }
+  .legal-links a { color: #fff; text-decoration: none; }
+  .legal-links a:hover { opacity: .7; }
   .social-bar {
     position: fixed;
     z-index: 10;

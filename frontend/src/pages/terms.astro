@@ -1,36 +1,22 @@
 ---
 import Layout from "../layouts/Layout.astro";
+import FooterSection from "../components/FooterSection.tsx";
 const description =
   "ymkw.topの利用規約。本サービス（Discord Botおよび統計サイト）を利用する上での条件、禁止事項、権利帰属について定めています。";
 ---
 
-<Layout title="利用規約" description={description}>
+<Layout title="利用規約" description={description} hideNavigation>
+  <div class="legal-page">
   <div class="max-w-4xl mx-auto py-16 px-6">
-    <div class="mb-12 flex flex-col items-center gap-7 text-center animate-fade-in">
+    <div class="legal-header mb-12 flex flex-col items-center gap-7 text-center">
       <h1 class="text-2xl md:text-4xl font-black text-gray-900 font-outfit tracking-tight">
-        発言ランキングWeb 規約
+        利用規約
       </h1>
-
-      <div class="flex w-full max-w-sm rounded-xl bg-[#f8f8f8] p-1.5 text-xs font-black uppercase tracking-widest">
-        <a href="/terms" class="relative flex-1 rounded-lg px-6 py-3 text-white transition-colors">
-          <span class="absolute inset-0 rounded-lg bg-[#545454]" style="view-transition-name: legal-active-tab;"></span>
-          <span class="relative z-10">利用規約</span>
-        </a>
-        <a href="/privacy" class="relative flex-1 rounded-lg px-6 py-3 text-[#545454] transition-colors hover:bg-[#545454]/10">
-          <span class="relative z-10">ポリシー</span>
-        </a>
-      </div>
     </div>
 
     <div
-      class="bg-[#f8f8f8] rounded-2xl p-6 md:p-12 animate-fade-in font-sans"
+      class="legal-content bg-[#f8f8f8] rounded-2xl p-6 md:p-12 font-sans"
     >
-      <h2
-        class="text-3xl font-black text-gray-900 mb-10 font-outfit tracking-tight"
-      >
-        利用規約
-      </h2>
-
       <div class="space-y-12 text-gray-600 leading-relaxed text-sm">
         <section>
           <p>
@@ -126,4 +112,20 @@ const description =
       </div>
     </div>
   </div>
+  <FooterSection variant="dark" />
+  </div>
 </Layout>
+
+<style>
+  @font-face { font-family: "LegalLINE"; src: url("/fonts/LINESeedJP-ExtraBold.ttf") format("truetype"); font-display: swap; }
+  :global(body) { background: #000; }
+  .legal-page { min-height: 100svh; background: #000; color: #fff; font-family: "LegalLINE", Arial, sans-serif; }
+  .legal-page :global(*) { font-family: inherit !important; }
+  .legal-page :global(.footer-yamakawa), .legal-page :global(.footer-yamakawa *) { font-family: "ZakkuriGothic", sans-serif !important; }
+  .legal-header h1, .legal-content h2 { color: #fff !important; }
+  .legal-header { display: block; text-align: left; }
+  .legal-header h1 { margin: 0; border-bottom: 1px solid #333; padding-bottom: 1rem; }
+  .legal-content { background: #000 !important; border: 0; border-radius: 0 !important; padding: 0 !important; }
+  .legal-content :global(.text-gray-600), .legal-content :global(.text-gray-500) { color: #d4d4d4 !important; }
+  .legal-content section h2 { margin-bottom: 1rem; font-size: 1.2rem; }
+</style>

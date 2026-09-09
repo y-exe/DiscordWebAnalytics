@@ -34,7 +34,7 @@ const CustomTooltip = ({ active, payload, label, users, highlightUserId, focused
                                     {avatar ? <img src={avatar} alt="" className="w-6 h-6 flex-shrink-0 rounded-full border border-border object-cover" referrerPolicy="no-referrer" /> : <div className="w-6 h-6 rounded-full bg-muted flex-shrink-0" style={{ border: `2px solid ${p.stroke || p.fill}` }}></div>}
                                     <span className={`truncate text-xs font-bold ${isMe ? 'text-red-500' : isFocus ? 'text-blue-500' : 'text-foreground'}`}>{name}</span>
                                 </div>
-                                <span className="font-mono font-black text-foreground text-sm">{p.value.toLocaleString()}</span>
+                                <span className="result-number font-black text-foreground text-sm">{p.value.toLocaleString()}</span>
                             </div>
                         );
                     })}
@@ -53,7 +53,7 @@ const TotalTooltip = ({ active, payload, label }) => {
                 <div className="flex items-center gap-2">
                     <div className="w-3 h-3 rounded-full bg-primary"></div>
                     <span className="text-xs font-bold text-muted-foreground">合計</span>
-                    <span className="font-mono font-black text-foreground text-sm ml-auto">{payload[0].value.toLocaleString()}</span>
+                    <span className="result-number font-black text-foreground text-sm ml-auto">{payload[0].value.toLocaleString()}</span>
                 </div>
             </div>
         );

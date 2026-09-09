@@ -80,7 +80,7 @@ export default function RankingList({ data, highlightUserId }) {
 function RankRow({ user, rank, isMe }) {
     return (
         <div className={`flex items-center p-3 border-b-2 border-white/15 last:border-0 transition-colors hover:bg-white/[0.08] ${isMe ? 'bg-[#D02752]/20 hover:bg-[#D02752]/25' : ''}`}>
-            <span className={`w-8 text-center font-mono font-bold text-sm ${rank <= 3 ? 'text-yellow-400' : 'text-white/45'}`}>{rank}</span>
+            <span className={`result-number w-8 text-center font-bold text-sm ${rank <= 3 ? 'text-yellow-400' : 'text-white/45'}`}>{rank}</span>
             <Avatar className="w-8 h-8 mx-3">
                 <AvatarImage src={user.avatar} className="object-cover" />
                 <AvatarFallback className="text-xs bg-white/10 text-white/70">{user.display_name?.charAt(0) || '?'}</AvatarFallback>
@@ -90,7 +90,7 @@ function RankRow({ user, rank, isMe }) {
                 <p className="text-[10px] text-white/40 truncate">@{user.username}</p>
             </div>
             <div className="text-right">
-                <p className="font-mono font-bold text-white text-sm">{user.count.toLocaleString()}</p>
+                <p className="result-number font-bold text-white text-sm">{user.count.toLocaleString()}</p>
                 {user.char_count > 0 && (
                     <p className="text-[9px] text-white/40 font-mono">
                         平均 {Math.round(user.char_count / user.count)}
@@ -109,7 +109,7 @@ function TopRankRow({ user, rank, isHighlight, compact = false }) {
     if (rank === 1) {
         return (
             <div className={`relative overflow-hidden border-b-2 border-white/15 px-5 py-5 text-center ${isHighlight ? 'bg-[#D02752]/18' : 'bg-white/[0.035]'}`}>
-                <div className="absolute right-5 top-4 font-mono text-3xl font-black text-yellow-400/90">1</div>
+                <div className="result-number absolute right-5 top-4 text-3xl font-black text-yellow-400/90">1</div>
                 <div className="mx-auto mb-3 w-fit">
                     <Avatar className={avatarSize}>
                         <AvatarImage src={user.avatar} className="object-cover" />
@@ -121,7 +121,7 @@ function TopRankRow({ user, rank, isHighlight, compact = false }) {
                 </h3>
                 <p className="mb-4 truncate text-[11px] text-white/45">@{user.username}</p>
                 <div className="border-t-2 border-white/15 py-3">
-                    <span className={`block font-mono font-black leading-none text-white ${countSize}`}>{user.count.toLocaleString()}</span>
+                    <span className={`result-number block font-black leading-none text-white ${countSize}`}>{user.count.toLocaleString()}</span>
                     <span className="mt-1 block text-[10px] font-bold tracking-wider text-white/45">メッセージ</span>
                 </div>
             </div>
@@ -130,7 +130,7 @@ function TopRankRow({ user, rank, isHighlight, compact = false }) {
 
     return (
         <div className={`relative flex min-h-[150px] flex-col items-center justify-between px-4 py-5 text-center transition-colors hover:bg-white/[0.06] ${rank === 2 ? 'border-r-2 border-white/15' : ''} ${isHighlight ? 'bg-[#D02752]/18' : 'bg-white/[0.025]'}`}>
-            <div className={`absolute right-3 top-3 font-mono text-xl font-black ${rankColor} opacity-90`}>
+            <div className={`result-number absolute right-3 top-3 text-xl font-black ${rankColor} opacity-90`}>
                 {rank}
             </div>
             <div className="rounded-full">
@@ -146,7 +146,7 @@ function TopRankRow({ user, rank, isHighlight, compact = false }) {
                 <p className="truncate text-[10px] text-white/45">@{user.username}</p>
             </div>
             <div className="mt-2 w-full border-t-2 border-white/15 pt-3">
-                <span className={`block font-mono font-black text-white ${compact ? 'text-lg' : countSize}`}>{user.count.toLocaleString()}</span>
+                <span className={`result-number block font-black text-white ${compact ? 'text-lg' : countSize}`}>{user.count.toLocaleString()}</span>
                 <div className="text-[9px] font-bold text-white/45">
                     メッセージ
                 </div>

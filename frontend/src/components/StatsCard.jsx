@@ -18,11 +18,11 @@ export default function StatsCard({ myData, topUserCount }) {
           <div className="min-w-0">
             <p className="mb-0.5 text-xs font-bold tracking-wider text-[#111F35]">あなたの成績</p>
             <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-              <span className="font-mono text-3xl font-bold leading-none text-gray-950">
+              <span className="result-number text-3xl font-bold leading-none text-gray-950">
                 {myData.rank}
                 <span className="ml-1 text-sm text-gray-500">位</span>
               </span>
-              <span className="font-mono text-sm text-gray-500">
+              <span className="result-number text-sm text-gray-500">
                 / {myData.count.toLocaleString()}件
               </span>
             </div>
@@ -34,7 +34,7 @@ export default function StatsCard({ myData, topUserCount }) {
             <span className="flex items-center gap-2 text-base font-black text-black">
               1位との比較
             </span>
-            <span className="rounded-full bg-[#111F35] px-4 py-1.5 font-mono text-2xl font-black leading-none text-white">
+            <span className="result-number rounded-full bg-[#111F35] px-4 py-1.5 text-2xl font-black leading-none text-white">
               {percentage}%
             </span>
           </div>
@@ -46,7 +46,7 @@ export default function StatsCard({ myData, topUserCount }) {
           </div>
           <div className="mt-2 flex justify-between">
             <p className="font-mono text-sm font-black text-[#111F35]">自分</p>
-            <p className="text-right font-mono text-sm font-black text-[#111F35]">
+            <p className="result-number text-right text-sm font-black text-[#111F35]">
               1位 ({topUserCount.toLocaleString()})
             </p>
           </div>

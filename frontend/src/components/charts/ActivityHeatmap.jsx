@@ -57,7 +57,7 @@ export default function ActivityHeatmap({ data }) {
           <div className="flex mb-2">
             <div className="w-8"></div>
             {hours.map(h => (
-              <div key={h} className="flex-1 text-[9px] font-black text-muted-foreground/50 text-center font-mono">
+              <div key={h} className="result-number flex-1 text-[9px] font-black text-muted-foreground/50 text-center">
                 {h % 2 === 0 ? h : ''}
               </div>
             ))}
