@@ -1,11 +1,21 @@
 
 import * as THREE from 'three';import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';import {OrbitControls} from 'three/addons/controls/OrbitControls.js';import {RoomEnvironment} from 'three/addons/environments/RoomEnvironment.js';
-const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setSize(innerWidth,innerHeight);renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=.98;document.querySelector(".model").appendChild(renderer.domElement);
+const requestedQuality=new URLSearchParams(location.search).get('quality');
+const memory=navigator.deviceMemory??4,cores=navigator.hardwareConcurrency??4;
+const touchDevice=matchMedia('(pointer:coarse)').matches;
+const quality=['high','medium','low'].includes(requestedQuality)?requestedQuality:(matchMedia('(prefers-reduced-motion: reduce)').matches||memory<=2||cores<=2?'low':touchDevice?(memory>=8&&cores>=8?'medium':'low'):(memory>=8&&cores>=8?'high':'medium'));
+const profile={
+ high:{pixelRatio:2,postProcessing:true,bloomScale:1,samples:4,motionBlur:true,maxFrameRate:0},
+ medium:{pixelRatio:1.25,postProcessing:true,bloomScale:.5,samples:0,motionBlur:false,maxFrameRate:touchDevice?45:0},
+ low:{pixelRatio:1,postProcessing:false,bloomScale:0,samples:0,motionBlur:false,maxFrameRate:30},
+}[quality];
+document.documentElement.dataset.threeQuality=quality;
+const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});renderer.setPixelRatio(Math.min(devicePixelRatio,profile.pixelRatio));renderer.setSize(innerWidth,innerHeight);renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=.98;document.querySelector(".model").appendChild(renderer.domElement);
 const scene=new THREE.Scene();scene.background=null;const pmrem=new THREE.PMREMGenerator(renderer),room=new RoomEnvironment();scene.environment=pmrem.fromScene(room,.04).texture;room.dispose();pmrem.dispose();
 const camera=new THREE.PerspectiveCamera(36,innerWidth/innerHeight,.01,100);camera.position.set(4.2,4,7.9);const controls=new OrbitControls(camera,renderer.domElement);controls.target.set(0,1.57,1.9);controls.enableDamping=true;controls.enablePan=false;controls.minDistance=2.5;controls.maxDistance=14;
 function frameAtNativeResolution(){camera.zoom=2.84;const shift=innerWidth<=760?.18:.17;camera.setViewOffset(innerWidth,innerHeight,-innerWidth*shift,0,innerWidth,innerHeight);camera.updateProjectionMatrix();}
 frameAtNativeResolution();addEventListener('resize',frameAtNativeResolution);
-const focus=new THREE.Vector3(0,1.57,1.9);function softbox(c,i,w,h,x,y,z){const l=new THREE.RectAreaLight(c,i,w,h);l.position.set(x,y,z);l.lookAt(focus);scene.add(l)}softbox(0xffffff,9,5.5,4,-3.5,6,4.5);softbox(0xffffff,6.5,4,3.2,2.8,4.4,-2.3);softbox(0xfff5ea,2,3,2,4,2.8,3);softbox(0xffffff,4,3.5,3.5,-1,5.5,-1);const fill=new THREE.DirectionalLight(0xffffff,.3);fill.position.set(-2,2,4);scene.add(fill);
+const focus=new THREE.Vector3(0,1.57,1.9);function softbox(c,i,w,h,x,y,z){const l=new THREE.RectAreaLight(c,i,w,h);l.position.set(x,y,z);l.lookAt(focus);scene.add(l)}softbox(0xffffff,9,5.5,4,-3.5,6,4.5);if(quality!=='low'){softbox(0xffffff,6.5,4,3.2,2.8,4.4,-2.3);softbox(0xfff5ea,2,3,2,4,2.8,3);softbox(0xffffff,4,3.5,3.5,-1,5.5,-1)}const fill=new THREE.DirectionalLight(0xffffff,.3);fill.position.set(-2,2,4);scene.add(fill);
 // Object-space mould texture: stable across UV seams and camera rotation.
 function addMouldGrain(m){
  m.onBeforeCompile=shader=>{
@@ -29,7 +39,7 @@ function addMouldGrain(m){
  };
  m.customProgramCacheKey=()=> 'mould-grain-v1';
 }
-const recMaterials=[];
+const recMaterials=[],useDetailShaders=quality!=='low';
 // Preserve the opening pose while spinning around the crown's top centre.
 const presentation=new THREE.Group(),turntable=new THREE.Group();
 presentation.position.copy(focus);presentation.rotation.set(-5*Math.PI/180,0,-12*Math.PI/180);
@@ -49,13 +59,13 @@ function animatePresentation(time){
  const t=Math.max(0,(phase-slowDuration)/fastDuration);
  const pulse=t*t*t*(10+t*(-15+6*t));
  const velocityPulse=30*t*t*(1-t)*(1-t);
- motionBlur.value=.006*velocityPulse;
+ motionBlur.value=profile.motionBlur?.006*velocityPulse:0;
  const degrees=-10+(phase<slowDuration?slowSpeed*phase:20+slowSpeed*(phase-slowDuration)+(340-slowSpeed*fastDuration)*pulse);
  turntable.rotation.y=THREE.MathUtils.degToRad(degrees);
 }
 let renderFrame=()=>renderer.render(scene,camera);
 import {transparentBloom} from './transparent-bloom.js';
-renderFrame=transparentBloom(renderer,scene,camera,motionBlur);
+if(profile.postProcessing){renderFrame=transparentBloom(renderer,scene,camera,{motionBlur,bloomScale:profile.bloomScale,samples:profile.samples,enableMotionBlur:profile.motionBlur}).render;}
 const name=m=>String(m.name||'').toLowerCase(),has=(m,...x)=>x.some(a=>name(m).includes(a));
 const sceneAssetManager=new THREE.LoadingManager();let sceneReadyDispatched=false;const dispatchSceneReady=()=>{if(sceneReadyDispatched)return;sceneReadyDispatched=true;requestAnimationFrame(()=>requestAnimationFrame(()=>window.dispatchEvent(new Event('ymkw:scene-ready'))));};sceneAssetManager.onLoad=dispatchSceneReady;
 new GLTFLoader(sceneAssetManager).load('/home-scene/cap.gltf',g=>{
@@ -95,7 +105,7 @@ m.customProgramCacheKey=()=> 'cotton-weave-v2';m.sheen=.35;m.sheenColor.setRGB(.
     m.roughness=.045;m.metalness=0;m.envMapIntensity=.22;m.specularIntensity=.35;m.clearcoat=0;m.side=THREE.FrontSide;
    }else if(has(m,'fine injection')){
     m.color.setRGB(.012,.012,.0115);m.roughness=.5;m.metalness=0;m.envMapIntensity=.45;
-    if('specularIntensity'in m)m.specularIntensity=.45;addMouldGrain(m);
+    if('specularIntensity'in m)m.specularIntensity=.45;if(useDetailShaders)addMouldGrain(m);
    }else if(has(m,'silicone','textured side rubber')){
     m.color.setRGB(.012,.012,.012);m.roughness=.82;m.metalness=0;m.envMapIntensity=.25;
    }else if(has(m,'mount')){
@@ -120,7 +130,7 @@ m.customProgramCacheKey=()=> 'cotton-weave-v2';m.sheen=.35;m.sheenColor.setRGB(.
   };
   o.material=Array.isArray(o.material)?o.material.map(tune):tune(o.material);
  // Optical assembly gets dedicated finishes, never the moulded body grain.
- if(/convex aspheric/i.test(o.name)){
+ if(useDetailShaders&&/convex aspheric/i.test(o.name)){
   o.material=o.material.clone();
   o.material.onBeforeCompile=shader=>{
    shader.vertexShader=shader.vertexShader.replace('#include <common>','#include <common>\nvarying vec3 opticalPosition;').replace('#include <begin_vertex>','#include <begin_vertex>\nopticalPosition=position;');
@@ -137,7 +147,7 @@ m.customProgramCacheKey=()=> 'cotton-weave-v2';m.sheen=.35;m.sheenColor.setRGB(.
   };
   o.material.customProgramCacheKey=()=> 'optical-coated-element-v1';
  }
- if(/lens barrel recessed/i.test(o.name)){
+ if(useDetailShaders&&/lens barrel recessed/i.test(o.name)){
   o.material=o.material.clone();o.material.color.setRGB(.005,.005,.005);o.material.roughness=.36;o.material.metalness=.6;
   o.material.onBeforeCompile=shader=>{
    shader.vertexShader=shader.vertexShader.replace('#include <common>','#include <common>\nvarying vec3 barrelPosition;').replace('#include <begin_vertex>','#include <begin_vertex>\nbarrelPosition=position;');
@@ -171,5 +181,5 @@ const pivot=crownTop?new THREE.Box3().setFromObject(crownTop).getCenter(new THRE
 // R(p - oldPivot) + oldPivot == R(p - pivot) + compensatedPosition.
 presentation.position.copy(pivot).sub(focus).applyQuaternion(presentation.quaternion).add(focus);
 g.scene.position.sub(pivot);turntable.add(g.scene);motionStart=performance.now();document.querySelector('#hint').textContent='DRAG TO EXPLORE · SCROLL TO ZOOM';
-},undefined,()=>{document.querySelector('#hint').textContent='3D MODEL COULD NOT LOAD';dispatchSceneReady()});addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)});renderer.setAnimationLoop((time)=>{recMaterials.forEach(m=>m.emissiveIntensity=24);animatePresentation(time);controls.update();renderFrame();});
+},undefined,()=>{document.querySelector('#hint').textContent='3D MODEL COULD NOT LOAD';dispatchSceneReady()});addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)});let lastRenderTime=0;renderer.setAnimationLoop((time)=>{if(document.hidden)return;const frameInterval=profile.maxFrameRate?1000/profile.maxFrameRate:0;if(frameInterval&&time-lastRenderTime<frameInterval)return;lastRenderTime=time;recMaterials.forEach(m=>m.emissiveIntensity=24);animatePresentation(time);controls.update();renderFrame();});
 
