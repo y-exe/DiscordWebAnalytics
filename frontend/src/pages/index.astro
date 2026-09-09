@@ -318,10 +318,10 @@ const description = "やまかわてるき鯖の公認WEBダッシュボード�
     font-size: calc(var(--loader-size) * .52);
     animation: 4s cubic-bezier(.22, 1, .36, 1) infinite;
   }
-  .site-loader-char-1 { animation-name: loader-ya; }
-  .site-loader-char-2 { animation-name: loader-ma; }
-  .site-loader-char-3 { animation-name: loader-ka; }
-  .site-loader-char-4 { animation-name: loader-wa; }
+  .site-loader-char-1 { transform: translate3d(0, 0, 0); animation-name: loader-ya; }
+  .site-loader-char-2 { transform: translate3d(100%, 0, 0); animation-name: loader-ma; }
+  .site-loader-char-3 { transform: translate3d(0, 100%, 0); animation-name: loader-ka; }
+  .site-loader-char-4 { transform: translate3d(100%, 100%, 0); animation-name: loader-wa; }
   @keyframes loader-ya { 0%,100%{transform:translate3d(0,0,0)} 15%,25%{transform:translate3d(0,100%,0)} 40%,50%{transform:translate3d(100%,100%,0)} 65%,75%{transform:translate3d(100%,0,0)} }
   @keyframes loader-ma { 0%,100%{transform:translate3d(100%,0,0)} 15%,25%{transform:translate3d(0,0,0)} 40%,50%{transform:translate3d(0,100%,0)} 65%,75%{transform:translate3d(100%,100%,0)} }
   @keyframes loader-ka { 0%,100%{transform:translate3d(0,100%,0)} 15%,25%{transform:translate3d(100%,100%,0)} 40%,50%{transform:translate3d(100%,0,0)} 65%,75%{transform:translate3d(0,0,0)} }
