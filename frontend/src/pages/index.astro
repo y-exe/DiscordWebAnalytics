@@ -1,374 +1,345 @@
 ---
-import Layout from "../layouts/Layout.astro";
-import { RiBarChartBoxFill, RiCalendarScheduleFill } from "react-icons/ri";
-import { InteractiveHoverButton } from "../components/ui/InteractiveHoverButton";
+import RotatingYamakawa from "../components/RotatingYamakawa.astro";
+import HomeReelLink from "../components/HomeReelLink.astro";
+import SocialReel from "../components/SocialReel.astro";
 
 const date = new Date();
 date.setDate(0);
-const prevMonthYear = date.getFullYear();
-const prevMonth = date.getMonth() + 1;
-
-const title = "やまかわてるき";
-const description =
-  "やまかわてるき鯖の統計データを可視化する公認WEBダッシュボードです。Discordのランキング、活動量、月間レポートを確認できます。";
+const reportUrl = `/month/${date.getFullYear()}/${date.getMonth() + 1}`;
+const description = "やまかわてるき鯖の公認WEBダッシュボード。月間レポートと累計ランキングを確認できます。";
 ---
 
-<Layout title={title} description={description} hideNavigation={true}>
-  <style>
-    @font-face {
-      font-family: "ZakkuriGothic";
-      src: url("/fonts/ZakkuriGothicFree-Black.otf") format("opentype");
-      font-display: swap;
-    }
-    :root {
-      --box-size: 14rem;
-    }
-    @media (min-width: 640px) {
-      :root {
-        --box-size: 18rem;
-      }
-    }
-    @media (min-width: 1024px) {
-      :root {
-        --box-size: 22rem;
-      }
-    }
-    .wrapper {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: space-between;
-      min-height: 100vh;
-      width: 100%;
-      position: relative;
-      overflow: hidden;
-      background-color: hsl(var(--background));
-      padding: 2rem 1.5rem;
-      font-family: "Outfit", sans-serif;
-    }
-    .bg-text-container {
-      position: absolute;
-      inset: 0;
-      z-index: 0;
-      opacity: 0.04;
-      pointer-events: none;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      overflow: hidden;
-    }
-    .bg-text-content {
-      font-family: "Dela Gothic One", cursive;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      font-size: 52vw;
-      line-height: 0.86;
-      text-align: center;
-      transform: scale(1.08, 2.9);
-      user-select: none;
-      color: hsl(var(--foreground));
-      white-space: normal;
-    }
-    .bg-text-content span {
-      display: block;
-      white-space: nowrap;
-    }
-    .header-logo {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      z-index: 10;
-      margin-bottom: 2rem;
-    }
-    .header-sub {
-      font-weight: 700;
-      font-size: 0.75rem;
-      letter-spacing: 0.3em;
-      color: hsl(var(--muted-foreground));
-      text-transform: uppercase;
-    }
-    .header-main {
-      font-weight: 800;
-      font-size: 1.5rem;
-      letter-spacing: -0.05em;
-      color: hsl(var(--foreground));
-      margin-top: 0.25rem;
-    }
-    .footer {
-      z-index: 10;
-      text-align: center;
-      font-size: 0.5rem;
-      color: hsl(var(--muted-foreground));
-      font-family: monospace;
-      margin-top: 2rem;
-      transform: translateY(1.25rem);
-    }
-    .main-grid {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 2rem;
-      width: 100%;
-      max-width: 80rem;
-      z-index: 10;
-    }
-    @media (min-width: 1024px) {
-      .bg-text-content {
-        flex-direction: row;
-        font-size: 25vw;
-        line-height: 1;
-        transform: scale(1, 3.5);
-        white-space: nowrap;
-      }
-      .header-logo {
-        margin-bottom: 0;
-      }
-      .footer {
-        font-size: 0.625rem;
-        margin-top: 0;
-        transform: none;
-      }
-      .main-grid {
-        flex-direction: row;
-        gap: 4rem;
-      }
-    }
-    .nav-card {
-      position: relative;
-      width: 100%;
-      overflow: hidden;
-      background: #050505;
-      border: 1px solid #1a1a1a;
-      color: #f5f7fb;
-      padding: 2rem;
-      border-radius: 2rem;
-      box-shadow: 0 18px 42px -24px rgba(0, 0, 0, 0.9);
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      text-align: center;
-    }
-    @media (min-width: 1024px) {
-      .nav-card {
-        width: 18rem;
-      }
-    }
-    .card-bg-icon {
-      position: absolute;
-      right: -3.25rem;
-      bottom: -3.75rem;
-      z-index: 0;
-      width: 14.5rem;
-      height: 14.5rem;
-      color: #353535;
-      opacity: 0.9;
-      pointer-events: none;
-      transform: rotate(-8deg);
-    }
-    .card-bg-icon-rank {
-      right: -3rem;
-      bottom: -3.85rem;
-      transform: rotate(7deg);
-    }
-    .card-title {
-      position: relative;
-      z-index: 1;
-      font-weight: 700;
-      font-size: 1.125rem;
-      color: #f7f8fc;
-      margin-bottom: 0.25rem;
-    }
-    .card-sub {
-      position: relative;
-      z-index: 1;
-      font-size: 0.75rem;
-      color: #9b9b9b;
-      font-family: monospace;
-      margin-bottom: 1rem;
-    }
-    .card-action {
-      position: relative;
-      z-index: 1;
-      margin: 0;
-    }
-    .red-box {
-      position: relative;
-      background-color: #ff0000;
-      border-radius: 3rem;
-      width: var(--box-size);
-      height: var(--box-size);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      box-shadow: 0 25px 50px -12px rgba(239, 68, 68, 0.4);
-    }
-    .char-container {
-      width: 82%;
-      height: 82%;
-      position: relative;
-    }
-    .char {
-      position: absolute;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      width: 50%;
-      height: 50%;
-      color: white;
-      font-family: "ZakkuriGothic", sans-serif;
-      font-size: calc(var(--box-size) * 0.82 * 0.52);
-      line-height: 0.65;
-      animation-duration: 4s;
-      animation-iteration-count: infinite;
-      animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
-    }
-    .char-1 {
-      animation-name: move-ya;
-    }
-    .char-2 {
-      animation-name: move-ma;
-    }
-    .char-3 {
-      animation-name: move-ka;
-    }
-    .char-4 {
-      animation-name: move-wa;
-    }
-    @keyframes move-ya {
-      0%,
-      100% {
-        top: 0;
-        left: 0;
-      }
-      15%,
-      25% {
-        top: 50%;
-        left: 0;
-      }
-      40%,
-      50% {
-        top: 50%;
-        left: 50%;
-      }
-      65%,
-      75% {
-        top: 0;
-        left: 50%;
-      }
-    }
-    @keyframes move-ma {
-      0%,
-      100% {
-        top: 0;
-        left: 50%;
-      }
-      15%,
-      25% {
-        top: 0;
-        left: 0;
-      }
-      40%,
-      50% {
-        top: 50%;
-        left: 0;
-      }
-      65%,
-      75% {
-        top: 50%;
-        left: 50%;
-      }
-    }
-    @keyframes move-ka {
-      0%,
-      100% {
-        top: 50%;
-        left: 0;
-      }
-      15%,
-      25% {
-        top: 50%;
-        left: 50%;
-      }
-      40%,
-      50% {
-        top: 0;
-        left: 50%;
-      }
-      65%,
-      75% {
-        top: 0;
-        left: 0;
-      }
-    }
-    @keyframes move-wa {
-      0%,
-      100% {
-        top: 50%;
-        left: 50%;
-      }
-      15%,
-      25% {
-        top: 0;
-        left: 50%;
-      }
-      40%,
-      50% {
-        top: 0;
-        left: 0;
-      }
-      65%,
-      75% {
-        top: 50%;
-        left: 0;
-      }
-    }
-  </style>
-
-  <div
-    class="wrapper animate-in fade-in slide-in-from-bottom-4 duration-1000 ease-out"
-  >
-    <div class="bg-text-container">
-      <span class="bg-text-content">
-        <span>杉山</span>
-        <span>啓太</span>
-      </span>
-    </div>
-    <div class="header-logo">
-      <span class="header-sub">サーバー分析</span>
-      <h1 class="header-main">ymkw.top</h1>
-    </div>
-    <div class="main-grid">
-      <div class="nav-card order-2 lg:order-1">
-        <RiCalendarScheduleFill className="card-bg-icon" />
-        <h2 class="card-title">月間レポート</h2>
-        <p class="card-sub">{prevMonthYear}.{prevMonth} レポート</p>
-        <form class="card-action" action={`/month/${prevMonthYear}/${prevMonth}`} method="get">
-          <InteractiveHoverButton text="Open" type="submit" />
-        </form>
-      </div>
-      <div class="order-1 lg:order-2">
-        <div class="red-box">
-          <div class="char-container">
-            <span class="char char-1">や</span>
-            <span class="char char-2">ま</span>
-            <span class="char char-3">か</span>
-            <span class="char char-4">わ</span>
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>やまかわてるき | ymkw.top</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={new URL("/", Astro.site)} />
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="preload" href="/fonts/LINESeedJP-ExtraBold.ttf" as="font" type="font/ttf" crossorigin />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@700&display=swap" rel="stylesheet" />
+    <meta property="og:title" content="やまかわてるき | ymkw.top" />
+    <meta property="og:description" content={description} />
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content={new URL("/ranking.webp", Astro.site)} />
+    <script type="importmap" is:inline>{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"}}</script>
+  </head>
+  <body>
+    <main aria-label="やまかわてるき">
+      <div class="tick" aria-hidden="true">
+        {Array.from({ length: 8 }, () => (
+          <div class="row">
+            {Array.from({ length: 6 }, () => <span>ymkw.top</span>)}
           </div>
+        ))}
+      </div>
+      <div class="model" aria-hidden="true"><span id="hint" hidden></span></div>
+      <div class="content-shade" aria-hidden="true"></div>
+      <div class="frame" aria-hidden="true"></div>
+      <section class="home-intro" aria-label="ホームメニュー">
+        <RotatingYamakawa />
+        <h1 class="site-title"><span>ymkw.top</span></h1>
+        <p class="site-copy">やまかわてるき鯖分析サイト</p>
+        <nav class="navigation" aria-label="統計ページ">
+          <HomeReelLink href={reportUrl} label="月間レポート" />
+          <HomeReelLink href="/all" label="累計ランキング" />
+        </nav>
+        <div class="event-link">
+          <HomeReelLink href="https://event.ymkw.top" label="第一回やまかわ編集大会" event />
+        </div>
+      </section>
+      <nav class="social-bar" aria-label="ソーシャルメディア">
+        <a class="social-link" href="https://youtube.com/@yamakawateruki?si=Hb3Fn6Wdkz4tyfs5" target="_blank" rel="noreferrer" aria-label="YouTubeを開く">
+          <svg class="youtube-icon" viewBox="0 0 28 20" aria-hidden="true"><path fill="#ff0033" d="M27.4 3.1A3.5 3.5 0 0 0 25 .6C22.8 0 18.5 0 14 0S5.2 0 3 .6A3.5 3.5 0 0 0 .6 3.1C0 5.3 0 7.7.6 10s0 4.7.6 6.9A3.5 3.5 0 0 0 3 19.4c2.2.6 6.5.6 11 .6s8.8 0 11-.6a3.5 3.5 0 0 0 2.4-2.5c.6-2.2.6-4.6.6-6.9s0-4.7-.6-6.9Z"/><path fill="#fff" d="m11.2 14.3 7.3-4.3-7.3-4.3z"/></svg>
+          <SocialReel label="YouTube" />
+        </a>
+        <a class="social-link" href="https://x.com/YamakawaTeruki" target="_blank" rel="noreferrer" aria-label="X（旧Twitter）を開く">
+          <svg class="x-icon" viewBox="0 0 512 512" aria-hidden="true"><path fill="currentColor" d="M459.37 151.716c.325 4.548.325 9.097.325 13.645 0 138.72-105.583 298.558-298.558 298.558-59.452 0-114.68-17.219-161.137-47.106 8.447.974 16.568 1.299 25.34 1.299 49.055 0 94.213-16.568 130.274-44.832-46.132-.975-84.792-31.188-98.112-72.772 6.498.974 12.995 1.624 19.818 1.624 9.421 0 18.843-1.299 27.614-3.573-48.081-9.747-84.143-51.98-84.143-102.985v-1.299c13.969 7.797 30.214 12.67 47.431 13.319-28.264-18.843-46.781-51.005-46.781-87.391 0-19.492 5.197-37.36 14.294-52.954 51.655 63.675 129.3 105.258 216.365 109.807-1.624-7.797-2.599-15.918-2.599-24.04 0-57.828 46.782-104.934 104.934-104.934 30.213 0 57.502 12.67 76.67 33.137 23.715-4.548 46.456-13.32 66.599-25.34-7.798 24.366-24.366 44.833-46.132 57.827 21.117-2.273 41.584-8.122 60.426-16.243-14.292 20.791-32.161 39.308-52.628 54.253Z"/></svg>
+          <SocialReel label="X（旧Twitter）" />
+        </a>
+        <a class="social-link" href="https://discord.gg/Cn7GV9rn7Y" target="_blank" rel="noreferrer" aria-label="Discord鯖を開く">
+          <svg class="discord-icon" viewBox="0 0 32 24" aria-hidden="true"><path fill="currentColor" d="M25.8 3.2A22 22 0 0 0 20.3 1.5l-.7 1.4a20.3 20.3 0 0 0-7.2 0l-.7-1.4a22 22 0 0 0-5.5 1.7C2.7 8.3 1.7 13.3 2.2 18.2a22 22 0 0 0 6.7 3.4l1.7-2.3a14.7 14.7 0 0 1-2.7-1.4l.7-.5a16.8 16.8 0 0 0 14.8 0l.7.5a15 15 0 0 1-2.7 1.4l1.7 2.3a22 22 0 0 0 6.7-3.4c.6-5.7-1-10.7-4-15ZM11.4 15.3c-1.6 0-2.9-1.5-2.9-3.3s1.3-3.3 2.9-3.3 2.9 1.5 2.9 3.3-1.3 3.3-2.9 3.3Zm9.2 0c-1.6 0-2.9-1.5-2.9-3.3s1.3-3.3 2.9-3.3 2.9 1.5 2.9 3.3-1.3 3.3-2.9 3.3Z"/></svg>
+          <SocialReel label="Discord鯖" />
+        </a>
+      </nav>
+      <span class="copyright">© 2026 ymkw.top</span>
+      <div id="site-loader" class="site-loader" role="status" aria-label="ホームページを読み込んでいます">
+        <div class="site-loader-grid" aria-hidden="true">
+          <span class="site-loader-char site-loader-char-1">や</span><span class="site-loader-char site-loader-char-2">ま</span><span class="site-loader-char site-loader-char-3">か</span><span class="site-loader-char site-loader-char-4">わ</span>
         </div>
       </div>
-      <div class="nav-card order-3">
-        <RiBarChartBoxFill className="card-bg-icon card-bg-icon-rank" />
-        <h2 class="card-title">累計ランキング</h2>
-        <p class="card-sub">All Time</p>
-        <form class="card-action" action="/all" method="get">
-          <InteractiveHoverButton text="Open" type="submit" />
-        </form>
-      </div>
-    </div>
-    <div class="footer"><p>© 2026 ymkw.top</p></div>
-  </div>
-</Layout>
+    </main>
+    <script type="module" src="/home-scene/scene.js" is:inline></script>
+    <script is:inline>
+      (() => {
+        const loader = document.querySelector("#site-loader");
+        if (!(loader instanceof HTMLElement)) return;
+
+        const startedAt = performance.now();
+        const sceneReady = new Promise((resolve) =>
+          window.addEventListener("ymkw:scene-ready", resolve, { once: true }),
+        );
+        const fontsReady = document.fonts?.ready ?? Promise.resolve();
+        const pageReady = document.readyState === "complete"
+          ? Promise.resolve()
+          : new Promise((resolve) => window.addEventListener("load", resolve, { once: true }));
+
+        Promise.all([sceneReady, fontsReady, pageReady]).then(() => {
+          const remaining = Math.max(0, 700 - (performance.now() - startedAt));
+          window.setTimeout(() => {
+            loader.classList.add("is-closing");
+            loader.addEventListener("transitionend", (event) => {
+              if (event.propertyName === "opacity") loader.remove();
+            }, { once: true });
+            window.setTimeout(() => loader.remove(), 900);
+          }, remaining);
+        });
+      })();
+    </script>
+  </body>
+</html>
+
+<style is:global>
+  @font-face {
+    font-family: "LINE Seed JP";
+    src: url("/fonts/LINESeedJP-ExtraBold.ttf") format("truetype");
+    font-weight: 800;
+    font-style: normal;
+    font-display: swap;
+  }
+  :root {
+    color-scheme: dark;
+    --frame-inset: clamp(12px, 1.5vw, 24px);
+    --content-inset: calc(var(--frame-inset) + clamp(18px, 2.2vw, 34px));
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    width: 100%;
+    height: 100%;
+    overflow-x: clip;
+    background: #030303;
+    color: #f6f4ef;
+    font-family: "LINE Seed JP", Arial, sans-serif;
+    font-weight: 800;
+  }
+  .tick {
+    position: fixed;
+    inset: -20vh -12vw;
+    z-index: 1;
+    display: grid;
+    filter: blur(2.4px);
+    opacity: .9;
+    align-content: center;
+    gap: 3vh;
+    transform: rotate(-11deg) scale(1.15);
+    pointer-events: none;
+    overflow: hidden;
+  }
+  .row {
+    font-family: "Outfit", Arial, sans-serif;
+    font-weight: 700;
+    display: flex;
+    width: max-content;
+    white-space: nowrap;
+    color: transparent;
+    -webkit-text-stroke: 2px rgba(255,255,255,.48);
+    font-size: clamp(66px,9vw,175px);
+    font-weight: 900;
+    line-height: .75;
+    letter-spacing: -.09em;
+    animation: ticker-left 22s linear infinite;
+  }
+  .row:nth-child(even) {
+    animation-name: ticker-right;
+    animation-duration: 28s;
+    -webkit-text-stroke-color: rgba(255,255,255,.36);
+  }
+  .row span { padding-right: 1.2vw; }
+  @keyframes ticker-left { to { transform: translateX(-33.333%); } }
+  @keyframes ticker-right {
+    from { transform: translateX(-33.333%); }
+    to { transform: translateX(0); }
+  }
+  .model {
+    position: fixed;
+    inset: 0;
+    z-index: 3;
+    pointer-events: none;
+    overflow: hidden;
+  }
+  .model canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    filter: blur(2.4px) saturate(.84) brightness(1.08) contrast(.97);
+  }
+  .frame {
+    position: fixed;
+    inset: var(--frame-inset);
+    z-index: 8;
+    border: 1px solid rgba(255,255,255,.38);
+    pointer-events: none;
+  }
+  .content-shade {
+    position: fixed;
+    inset: 0;
+    z-index: 4;
+    pointer-events: none;
+    background: linear-gradient(90deg, rgb(0 0 0 / 48%), rgb(0 0 0 / 22%) 42%, transparent 65%);
+  }
+  .home-intro {
+    --yamakawa-size: clamp(180px, 29svh, 280px);
+    position: relative;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 50%;
+    min-height: 100svh;
+    padding: max(52px, env(safe-area-inset-top)) 28px max(64px, env(safe-area-inset-bottom));
+    text-align: center;
+  }
+  .site-title {
+    margin: 24px 0 0;
+    position: relative;
+    isolation: isolate;
+    display: inline-block;
+    padding: 0 .035em;
+    color: #fff;
+    font-family: "Outfit", Arial, sans-serif;
+    font-weight: 700;
+    font-size: clamp(52px, 5.3vw, 84px);
+    line-height: 1;
+    letter-spacing: -.045em;
+  }
+  .site-title > span {
+    position: relative;
+    z-index: 1;
+  }
+  .site-title::after {
+    position: absolute;
+    z-index: 0;
+    right: .035em;
+    bottom: 0;
+    left: .035em;
+    height: .17em;
+    background: #ffe33c;
+    content: "";
+  }
+  .site-copy {
+    margin: 20px 0 64px;
+    color: #fff;
+    font-size: clamp(22px, 2.2vw, 32px);
+    line-height: 1.3;
+    text-shadow: 0 2px 12px #000;
+  }
+  .navigation {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .event-link { margin-top: 20px; }
+  .copyright {
+    position: fixed;
+    z-index: 10;
+    right: var(--content-inset);
+    bottom: var(--content-inset);
+    color: rgba(255,255,255,.6);
+    color: #fff;
+    font-family: "Outfit", Arial, sans-serif;
+    font-size: clamp(17px, 1.55vw, 22px);
+    font-weight: 700;
+    letter-spacing: 0;
+  }
+  .social-bar {
+    position: fixed;
+    z-index: 10;
+    top: var(--content-inset);
+    right: var(--content-inset);
+    display: flex;
+    align-items: center;
+    gap: clamp(1rem, 2.5vw, 2.25rem);
+  }
+  .social-link {
+    display: inline-flex;
+    align-items: center;
+    gap: .48em;
+    color: #fff;
+    filter: drop-shadow(0 0 1px #000) drop-shadow(0 0 3px rgb(0 0 0 / 95%)) drop-shadow(0 0 7px rgb(0 0 0 / 78%));
+    font-size: clamp(.9rem, 1.3vw, 1.15rem);
+    font-weight: 800;
+    line-height: 1.2;
+    text-decoration: none;
+  }
+  .social-link:focus-visible { outline: 2px solid #fff; outline-offset: 5px; }
+  .youtube-icon { width: 1.4em; height: auto; flex: none; }
+  .x-icon { width: 1.1em; height: 1.1em; color: #1da1f2; flex: none; }
+  .discord-icon { width: 1.45em; height: auto; color: #5865f2; flex: none; }
+  .site-loader {
+    --loader-size: 200px;
+    position: fixed;
+    z-index: 10000;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    color: #fff;
+    background: #000;
+    isolation: isolate;
+    transition: opacity 850ms cubic-bezier(.22, 1, .36, 1);
+  }
+  .site-loader.is-closing { opacity: 0; pointer-events: none; }
+  .site-loader-grid {
+    position: relative;
+    width: var(--loader-size);
+    height: var(--loader-size);
+    font-family: "ZakkuriGothic", sans-serif;
+    line-height: .65;
+    transition: opacity 620ms ease, filter 720ms cubic-bezier(.22, 1, .36, 1), transform 720ms cubic-bezier(.22, 1, .36, 1);
+  }
+  .site-loader.is-closing .site-loader-grid { opacity: 0; filter: blur(10px); transform: scale(.88); }
+  .site-loader-char {
+    position: absolute;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 50%;
+    height: 50%;
+    color: #fff;
+    font-size: calc(var(--loader-size) * .52);
+    animation: 4s cubic-bezier(.22, 1, .36, 1) infinite;
+  }
+  .site-loader-char-1 { animation-name: loader-ya; }
+  .site-loader-char-2 { animation-name: loader-ma; }
+  .site-loader-char-3 { animation-name: loader-ka; }
+  .site-loader-char-4 { animation-name: loader-wa; }
+  @keyframes loader-ya { 0%,100%{transform:translate3d(0,0,0)} 15%,25%{transform:translate3d(0,100%,0)} 40%,50%{transform:translate3d(100%,100%,0)} 65%,75%{transform:translate3d(100%,0,0)} }
+  @keyframes loader-ma { 0%,100%{transform:translate3d(100%,0,0)} 15%,25%{transform:translate3d(0,0,0)} 40%,50%{transform:translate3d(0,100%,0)} 65%,75%{transform:translate3d(100%,100%,0)} }
+  @keyframes loader-ka { 0%,100%{transform:translate3d(0,100%,0)} 15%,25%{transform:translate3d(100%,100%,0)} 40%,50%{transform:translate3d(100%,0,0)} 65%,75%{transform:translate3d(0,0,0)} }
+  @keyframes loader-wa { 0%,100%{transform:translate3d(100%,100%,0)} 15%,25%{transform:translate3d(100%,0,0)} 40%,50%{transform:translate3d(0,0,0)} 65%,75%{transform:translate3d(0,100%,0)} }
+  @media (max-width: 760px) {
+    .row { font-size: 28vw; }
+    .home-intro {
+      --yamakawa-size: clamp(168px, 26svh, 224px);
+      width: 100%;
+      padding-inline: calc(var(--frame-inset) + 16px);
+    }
+    .content-shade { background: rgb(0 0 0 / 46%); }
+    .site-title { font-size: clamp(52px, 12vw, 72px); }
+    .navigation { gap: 8px; }
+    .social-bar { top: var(--content-inset); right: var(--content-inset); gap: .55rem; padding: .65rem; }
+    .social-link { gap: 0; font-size: clamp(1rem, 5vw, 1.25rem); }
+    .social-link .social-reel { display: none; }
+    .site-loader { --loader-size: 200px; }
+    .copyright { bottom: calc(var(--content-inset) + env(safe-area-inset-bottom)); }
+  }
+  @media (min-width: 768px) { .site-loader { --loader-size: 280px; } }
+  @media (prefers-reduced-motion: reduce) { .row, .site-loader-char { animation: none; } }
+</style>
