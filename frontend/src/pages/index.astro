@@ -317,6 +317,9 @@ const description = "やまかわてるき鯖の公認WEBダッシュボード�
     color: #fff;
     font-size: calc(var(--loader-size) * .52);
     animation: 4s cubic-bezier(.22, 1, .36, 1) infinite;
+    animation-play-state: running;
+    backface-visibility: hidden;
+    will-change: transform;
   }
   .site-loader-char-1 { transform: translate3d(0, 0, 0); animation-name: loader-ya; }
   .site-loader-char-2 { transform: translate3d(100%, 0, 0); animation-name: loader-ma; }
@@ -343,5 +346,5 @@ const description = "やまかわてるき鯖の公認WEBダッシュボード�
     .copyright { bottom: calc(var(--content-inset) + env(safe-area-inset-bottom)); }
   }
   @media (min-width: 768px) { .site-loader { --loader-size: 280px; } }
-  @media (prefers-reduced-motion: reduce) { .row, .site-loader-char { animation: none; } }
+  @media (prefers-reduced-motion: reduce) { .row { animation: none; } }
 </style>
