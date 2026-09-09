@@ -142,29 +142,35 @@ const description = "やまかわてるき鯖の公認WEBダッシュボード�
     overflow: hidden;
   }
   .row {
-    font-family: "Outfit", Arial, sans-serif;
-    font-weight: 700;
+    font-family: "LINE Seed JP", Arial, sans-serif;
+    font-weight: 800;
     display: flex;
     width: max-content;
     white-space: nowrap;
     color: transparent;
     -webkit-text-stroke: 2px rgba(255,255,255,.48);
     font-size: clamp(66px,9vw,175px);
-    font-weight: 900;
+    font-weight: 800;
     line-height: .75;
     letter-spacing: -.09em;
-    animation: ticker-left 22s linear infinite;
+    transform: translate3d(0, 0, 0);
+    will-change: transform;
+    animation-name: home-background-ticker-left;
+    animation-duration: 22s;
+    animation-timing-function: linear;
+    animation-iteration-count: infinite;
+    animation-play-state: running;
   }
   .row:nth-child(even) {
-    animation-name: ticker-right;
+    animation-name: home-background-ticker-right;
     animation-duration: 28s;
     -webkit-text-stroke-color: rgba(255,255,255,.36);
   }
   .row span { padding-right: 1.2vw; }
-  @keyframes ticker-left { to { transform: translateX(-33.333%); } }
-  @keyframes ticker-right {
-    from { transform: translateX(-33.333%); }
-    to { transform: translateX(0); }
+  @keyframes home-background-ticker-left { to { transform: translate3d(-33.333%, 0, 0); } }
+  @keyframes home-background-ticker-right {
+    from { transform: translate3d(-33.333%, 0, 0); }
+    to { transform: translate3d(0, 0, 0); }
   }
   .model {
     position: fixed;
