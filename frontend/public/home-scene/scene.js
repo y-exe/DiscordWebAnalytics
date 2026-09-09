@@ -3,11 +3,12 @@ import * as THREE from 'three';import {GLTFLoader} from 'three/addons/loaders/GL
 const requestedQuality=new URLSearchParams(location.search).get('quality');
 const memory=navigator.deviceMemory??4,cores=navigator.hardwareConcurrency??4;
 const touchDevice=matchMedia('(pointer:coarse)').matches;
-const quality=['high','medium','low'].includes(requestedQuality)?requestedQuality:(matchMedia('(prefers-reduced-motion: reduce)').matches||memory<=2||cores<=2?'low':touchDevice?(memory>=8&&cores>=8?'medium':'low'):(memory>=8&&cores>=8?'high':'medium'));
+// Medium is the ceiling. Keep the former "high" query value as a compatible alias.
+const quality=requestedQuality==='low'?'low':requestedQuality==='medium'||requestedQuality==='high'?'medium':(matchMedia('(prefers-reduced-motion: reduce)').matches||memory<=2||cores<=2?'low':touchDevice?(memory>=8&&cores>=8?'medium':'low'):'medium');
 const profile={
- high:{pixelRatio:2,postProcessing:true,bloomScale:1,samples:4,motionBlur:true,maxFrameRate:0},
- medium:{pixelRatio:1.25,postProcessing:true,bloomScale:.5,samples:0,motionBlur:false,maxFrameRate:touchDevice?45:0},
- low:{pixelRatio:1,postProcessing:false,bloomScale:0,samples:0,motionBlur:false,maxFrameRate:30},
+ medium:{pixelRatio:1.25,postProcessing:true,bloomScale:.5,bloomStrength:1.5,samples:0,motionBlur:false,maxFrameRate:touchDevice?45:0},
+ // Render the whole image below native resolution, but retain a faint red bloom.
+ low:{pixelRatio:.75,postProcessing:true,bloomScale:.35,bloomStrength:.48,samples:0,motionBlur:false,maxFrameRate:30},
 }[quality];
 document.documentElement.dataset.threeQuality=quality;
 const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});renderer.setPixelRatio(Math.min(devicePixelRatio,profile.pixelRatio));renderer.setSize(innerWidth,innerHeight);renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=.98;document.querySelector(".model").appendChild(renderer.domElement);
@@ -65,7 +66,7 @@ function animatePresentation(time){
 }
 let renderFrame=()=>renderer.render(scene,camera);
 import {transparentBloom} from './transparent-bloom.js';
-if(profile.postProcessing){renderFrame=transparentBloom(renderer,scene,camera,{motionBlur,bloomScale:profile.bloomScale,samples:profile.samples,enableMotionBlur:profile.motionBlur}).render;}
+if(profile.postProcessing){renderFrame=transparentBloom(renderer,scene,camera,{motionBlur,bloomScale:profile.bloomScale,bloomStrength:profile.bloomStrength,samples:profile.samples,enableMotionBlur:profile.motionBlur}).render;}
 const name=m=>String(m.name||'').toLowerCase(),has=(m,...x)=>x.some(a=>name(m).includes(a));
 const sceneAssetManager=new THREE.LoadingManager();let sceneReadyDispatched=false;const dispatchSceneReady=()=>{if(sceneReadyDispatched)return;sceneReadyDispatched=true;requestAnimationFrame(()=>requestAnimationFrame(()=>window.dispatchEvent(new Event('ymkw:scene-ready'))));};sceneAssetManager.onLoad=dispatchSceneReady;
 new GLTFLoader(sceneAssetManager).load('/home-scene/cap.gltf',g=>{

@@ -5,13 +5,13 @@ import {UnrealBloomPass} from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Keeps the 3D layer transparent while allowing bloom to render at a lower resolution.
 export function transparentBloom(renderer, scene, camera, options={}) {
- const {motionBlur={value:0},bloomScale=1,samples=0,enableMotionBlur=false}=options;
+ const {motionBlur={value:0},bloomScale=1,bloomStrength=1.5,samples=0,enableMotionBlur=false}=options;
  const base=new THREE.WebGLRenderTarget(1,1,{type:THREE.HalfFloatType,samples});
  const composer=new EffectComposer(renderer);
  composer.renderTarget1.samples=samples;composer.renderTarget2.samples=samples;
  composer.renderToScreen=false;
  composer.addPass(new RenderPass(scene,camera));
- composer.addPass(new UnrealBloomPass(new THREE.Vector2(1,1),1.5,.35,1));
+ composer.addPass(new UnrealBloomPass(new THREE.Vector2(1,1),bloomStrength,.35,1));
  const fragmentShader=enableMotionBlur
   ?`varying vec2 vUv;uniform sampler2D base;uniform sampler2D bloom;uniform float motionBlur;
     void main(){vec4 b=vec4(0.);vec3 bloomColor=vec3(0.);float total=0.;
