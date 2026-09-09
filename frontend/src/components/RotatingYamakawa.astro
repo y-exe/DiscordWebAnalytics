@@ -28,6 +28,8 @@
     }
     .char {
       position: absolute;
+      top: 0;
+      left: 0;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -40,110 +42,100 @@
       animation-duration: 4s;
       animation-iteration-count: infinite;
       animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+      animation-play-state: running;
+      backface-visibility: hidden;
+      will-change: transform;
     }
     .char-1 {
-      animation-name: move-ya;
+      transform: translate3d(0, 0, 0);
+      animation-name: home-logo-move-ya;
     }
     .char-2 {
-      animation-name: move-ma;
+      transform: translate3d(100%, 0, 0);
+      animation-name: home-logo-move-ma;
     }
     .char-3 {
-      animation-name: move-ka;
+      transform: translate3d(0, 100%, 0);
+      animation-name: home-logo-move-ka;
     }
     .char-4 {
-      animation-name: move-wa;
+      transform: translate3d(100%, 100%, 0);
+      animation-name: home-logo-move-wa;
     }
-    @keyframes move-ya {
+    @keyframes home-logo-move-ya {
       0%,
       100% {
-        top: 0;
-        left: 0;
+        transform: translate3d(0, 0, 0);
       }
       15%,
       25% {
-        top: 50%;
-        left: 0;
+        transform: translate3d(0, 100%, 0);
       }
       40%,
       50% {
-        top: 50%;
-        left: 50%;
+        transform: translate3d(100%, 100%, 0);
       }
       65%,
       75% {
-        top: 0;
-        left: 50%;
+        transform: translate3d(100%, 0, 0);
       }
     }
-    @keyframes move-ma {
+    @keyframes home-logo-move-ma {
       0%,
       100% {
-        top: 0;
-        left: 50%;
+        transform: translate3d(100%, 0, 0);
       }
       15%,
       25% {
-        top: 0;
-        left: 0;
+        transform: translate3d(0, 0, 0);
       }
       40%,
       50% {
-        top: 50%;
-        left: 0;
+        transform: translate3d(0, 100%, 0);
       }
       65%,
       75% {
-        top: 50%;
-        left: 50%;
+        transform: translate3d(100%, 100%, 0);
       }
     }
-    @keyframes move-ka {
+    @keyframes home-logo-move-ka {
       0%,
       100% {
-        top: 50%;
-        left: 0;
+        transform: translate3d(0, 100%, 0);
       }
       15%,
       25% {
-        top: 50%;
-        left: 50%;
+        transform: translate3d(100%, 100%, 0);
       }
       40%,
       50% {
-        top: 0;
-        left: 50%;
+        transform: translate3d(100%, 0, 0);
       }
       65%,
       75% {
-        top: 0;
-        left: 0;
+        transform: translate3d(0, 0, 0);
       }
     }
-    @keyframes move-wa {
+    @keyframes home-logo-move-wa {
       0%,
       100% {
-        top: 50%;
-        left: 50%;
+        transform: translate3d(100%, 100%, 0);
       }
       15%,
       25% {
-        top: 0;
-        left: 50%;
+        transform: translate3d(100%, 0, 0);
       }
       40%,
       50% {
-        top: 0;
-        left: 0;
+        transform: translate3d(0, 0, 0);
       }
       65%,
       75% {
-        top: 50%;
-        left: 0;
+        transform: translate3d(0, 100%, 0);
       }
     }
 
   .red-box { --box-size: var(--yamakawa-size, clamp(76px, 8vw, 116px)); text-decoration: none; }
   .red-box:focus-visible { outline: 2px solid white; outline-offset: 6px; }
-  @media (prefers-reduced-motion: reduce) { .char { animation-duration: 0s; } }
 </style>
 
