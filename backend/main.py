@@ -2,13 +2,12 @@ from fastapi import FastAPI, HTTPException, Response, Query, Request
 from fastapi.responses import JSONResponse, PlainTextResponse
 from fastapi.middleware.cors import CORSMiddleware
 import asyncpg
-import aiohttp
 import os
 import sys
 import asyncio
 import time
 import tempfile
-from dotenv import load_dotenv
+from dotenv import dotenv_values, load_dotenv
 from pydantic import BaseModel
 from typing import List, Optional, Any, Tuple
 from pathlib import Path
@@ -37,22 +36,26 @@ logger = logging.getLogger("ymkw-api")
 if sys.platform == 'win32':
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
+BASE_DIR = Path(__file__).resolve().parent
+local_env = dotenv_values(BASE_DIR / ".env")
 load_dotenv()
 raw_dsn = os.getenv("DB_DSN")
-API_SECRET = os.getenv("API_SECRET", "").strip()
-ADMIN_SESSION_SECRET = os.getenv("ADMIN_SESSION_SECRET", "").strip()
-ADMIN_PASSWORD_HASH = os.getenv("ADMIN_PASSWORD_HASH", "").strip()
+def application_secret(name: str) -> str:
+    return (local_env.get(name) or os.getenv(name, "")).strip()
+
+API_SECRET = application_secret("API_SECRET")
+ADMIN_SESSION_SECRET = application_secret("ADMIN_SESSION_SECRET")
+ADMIN_PASSWORD_HASH = application_secret("ADMIN_PASSWORD_HASH")
 
 if not raw_dsn:
-    BASE_DIR = Path(__file__).resolve().parent
     ENV_PATH = BASE_DIR.parent / "Bot" / ".env"
     if not ENV_PATH.exists():
         ENV_PATH = BASE_DIR.parent / "bot" / ".env"
     load_dotenv(dotenv_path=ENV_PATH)
     raw_dsn = os.getenv("DB_DSN")
-    API_SECRET = os.getenv("API_SECRET", "").strip()
-    ADMIN_SESSION_SECRET = os.getenv("ADMIN_SESSION_SECRET", "").strip()
-    ADMIN_PASSWORD_HASH = os.getenv("ADMIN_PASSWORD_HASH", "").strip()
+    API_SECRET = application_secret("API_SECRET")
+    ADMIN_SESSION_SECRET = application_secret("ADMIN_SESSION_SECRET")
+    ADMIN_PASSWORD_HASH = application_secret("ADMIN_PASSWORD_HASH")
 
 if not raw_dsn:
     sys.exit("ERROR: DB_DSN not found.")
@@ -330,26 +333,6 @@ async def security_and_rate_limit_middleware(request: Request, call_next):
 
 @app.on_event("startup")
 async def startup():
-    async def heartbeat_loop():
-        push_url = os.getenv("WATCHER_PUSH_URL")
-        if not push_url:
-            logger.warning("WATCHER_PUSH_URL not set. Heartbeat disabled.")
-            return
-        
-        async with aiohttp.ClientSession() as session:
-            while True:
-                try:
-                    async with session.get(push_url) as resp:
-                        if resp.status == 200:
-                            logger.info(f"Heartbeat sent successfully to {push_url}")
-                        else:
-                            logger.warning(f"Heartbeat failed with status {resp.status}")
-                except Exception as e:
-                    logger.error(f"Heartbeat error: {e}")
-                await asyncio.sleep(60)
-
-    asyncio.create_task(heartbeat_loop())
-
     global pool
     try:
         from urllib.parse import urlparse

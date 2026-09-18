@@ -86,7 +86,7 @@ class SyncData(commands.Cog):
 
             member_data = []
             for member in guild.members:
-                if not member.bot:
+                if not member.bot and member.id not in config.EXCLUDED_USER_IDS:
                     avatar = str(member.display_avatar.url) if member.display_avatar else None
                     member_data.append((member.id, member.display_name, member.name, avatar))
 
@@ -114,8 +114,8 @@ class SyncData(commands.Cog):
                 SELECT DISTINCT m.user_id 
                 FROM messages m
                 LEFT JOIN users u ON m.user_id = u.user_id
-                WHERE u.user_id IS NULL AND m.is_bot = FALSE
-            ''')
+                WHERE u.user_id IS NULL AND m.is_bot = FALSE AND m.user_id != ALL($1::bigint[])
+            ''', list(config.EXCLUDED_USER_IDS))
             
             if not missing_ids: return
 
@@ -124,6 +124,8 @@ class SyncData(commands.Cog):
             updates = []
             for row in missing_ids:
                 user_id = row['user_id']
+                if user_id in config.EXCLUDED_USER_IDS:
+                    continue
                 try:
                     user = await self.bot.fetch_user(user_id)
                     avatar = str(user.display_avatar.url) if user.display_avatar else None

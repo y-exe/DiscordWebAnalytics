@@ -61,7 +61,8 @@ class MonthSelectView(discord.ui.View):
 class Ranking(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.monthly_task.start()
+        # 月初めの自動ランキング送信を一時停止（復活させる場合はコメントアウトを外す）
+        # self.monthly_task.start()
 
     async def get_db_pool(self):
         return await asyncpg.create_pool(config.DB_DSN)
@@ -132,14 +133,14 @@ class Ranking(commands.Cog):
 
         return view
 
-    # 月次タスク
-    @tasks.loop(time=[time(hour=0, minute=0, tzinfo=ZoneInfo("Asia/Tokyo"))])
-    async def monthly_task(self):
-        now = datetime.now(ZoneInfo("Asia/Tokyo"))
-        if now.day != 1: return
-        last_month = now - relativedelta(months=1)
-        guild = self.bot.get_guild(config.GUILD_ID)
-        await self.run_ranking_logic(guild, last_month.year, last_month.month, is_auto=True)
+    # 月次タスク（月初めの自動ランキング送信。一時停止中。復活させる場合はコメントアウトを外す）
+    # @tasks.loop(time=[time(hour=0, minute=0, tzinfo=ZoneInfo("Asia/Tokyo"))])
+    # async def monthly_task(self):
+    #     now = datetime.now(ZoneInfo("Asia/Tokyo"))
+    #     if now.day != 1: return
+    #     last_month = now - relativedelta(months=1)
+    #     guild = self.bot.get_guild(config.GUILD_ID)
+    #     await self.run_ranking_logic(guild, last_month.year, last_month.month, is_auto=True)
 
     # コマンド: /month
     @app_commands.command(name="month", description="【管理者用】指定した月のランキングを手動送信")

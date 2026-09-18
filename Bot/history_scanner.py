@@ -267,6 +267,9 @@ async def scan_message_source_once(pool, channel, after_date, before_date):
     channel_count = 0
 
     async for msg in channel.history(limit=None, after=after_date, before=before_date, oldest_first=True):
+        if msg.author.id in config.EXCLUDED_USER_IDS:
+            continue
+
         batch_messages.append((
             msg.id,
             msg.author.id,
@@ -367,9 +370,12 @@ async def save_channels(pool, channels, mark_missing_inactive=False):
     logger.info(f"Synced {len(channel_data)} channels.")
 
 async def save_to_db(pool, messages, users):
+    filtered_users = [u for u in users.values() if u[0] not in config.EXCLUDED_USER_IDS] if users else []
+    filtered_messages = [m for m in messages if m[1] not in config.EXCLUDED_USER_IDS] if messages else []
+
     async with pool.acquire() as conn:
         async with conn.transaction():
-            if users:
+            if filtered_users:
                 await conn.executemany('''
                     INSERT INTO users (user_id, display_name, username, avatar_url)
                     VALUES ($1, $2, $3, $4)
@@ -377,9 +383,9 @@ async def save_to_db(pool, messages, users):
                         display_name = EXCLUDED.display_name,
                         username = EXCLUDED.username,
                         avatar_url = EXCLUDED.avatar_url
-                ''', list(users.values()))
+                ''', filtered_users)
             
-            if messages:
+            if filtered_messages:
                 await conn.executemany('''
                     INSERT INTO messages (message_id, user_id, channel_id, guild_id, created_at, is_bot, char_count)
                     VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -390,7 +396,7 @@ async def save_to_db(pool, messages, users):
                         created_at = EXCLUDED.created_at,
                         is_bot = EXCLUDED.is_bot,
                         char_count = EXCLUDED.char_count
-                ''', messages)
+                ''', filtered_messages)
 
 @client.event
 async def on_ready():

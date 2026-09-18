@@ -47,7 +47,7 @@ class Logger(commands.Cog):
 
     @commands.Cog.listener()
     async def on_message(self, message):
-        if message.author.bot or not message.guild:
+        if message.author.bot or not message.guild or message.author.id in config.EXCLUDED_USER_IDS:
             return
 
         try:

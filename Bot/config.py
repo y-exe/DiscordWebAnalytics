@@ -37,3 +37,7 @@ ADMIN_ROLE_ID = int(os.getenv("ADMIN_ROLE_ID", 0))
 
 KING_ROLE_ID = int(os.getenv("KING_ROLE_ID", 0))
 ANNOUNCE_CHANNEL_ID = int(os.getenv("ANNOUNCE_CHANNEL_ID", 0))
+
+raw_excluded_users = os.getenv("EXCLUDED_USER_IDS", "1491111267522314442")
+EXCLUDED_USER_IDS = set(int(uid.strip()) for uid in raw_excluded_users.split(",") if uid.strip().isdigit())
+
