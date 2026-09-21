@@ -7,6 +7,7 @@ const date = new Date();
 date.setDate(0);
 const reportUrl = `/month/${date.getFullYear()}/${date.getMonth() + 1}`;
 const description = "やまかわてるき鯖の公認WEBダッシュボード。月間レポートと累計ランキングを確認できます。";
+const gaId = import.meta.env.PUBLIC_GA_ID;
 ---
 
 <!doctype html>
@@ -28,6 +29,25 @@ const description = "やまかわてるき鯖の公認WEBダッシュボード�
     <meta property="og:type" content="website" />
     <meta property="og:image" content={new URL("/ranking.webp", Astro.site)} />
     <script type="importmap" is:inline>{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"}}</script>
+    {
+      gaId && (
+        <>
+          <script
+            is:inline
+            async
+            src={`https://www.googletagmanager.com/gtag/js?id=${gaId}`}
+          />
+          <script is:inline define:vars={{ gaId }}>
+            window.dataLayer = window.dataLayer || [];
+            function gtag() {
+              dataLayer.push(arguments);
+            }
+            gtag('js', new Date());
+            gtag('config', gaId);
+          </script>
+        </>
+      )
+    }
   </head>
   <body>
     <main aria-label="やまかわてるき">
