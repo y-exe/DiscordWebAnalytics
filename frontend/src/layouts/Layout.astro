@@ -22,7 +22,7 @@ const {
 } = Astro.props;
 
 const user = { id: null, name: null, avatar: null };
-const gaId = import.meta.env.PUBLIC_GA_ID;
+const gaId = import.meta.env.GA_ID || process.env.GA_ID || import.meta.env.PUBLIC_GA_ID;
 
 const currentPath = Astro.url.pathname;
 const queryParams = Astro.url.search;

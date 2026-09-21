@@ -7,7 +7,7 @@ const date = new Date();
 date.setDate(0);
 const reportUrl = `/month/${date.getFullYear()}/${date.getMonth() + 1}`;
 const description = "やまかわてるき鯖の公認WEBダッシュボード。月間レポートと累計ランキングを確認できます。";
-const gaId = import.meta.env.PUBLIC_GA_ID;
+const gaId = import.meta.env.GA_ID || process.env.GA_ID || import.meta.env.PUBLIC_GA_ID;
 ---
 
 <!doctype html>

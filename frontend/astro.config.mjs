@@ -6,6 +6,7 @@ export default defineConfig({
   output: 'static',
   integrations: [react()],
   vite: {
+    envPrefix: ['PUBLIC_', 'GA_'],
     server: {
       allowedHosts: ['ymkw.top'],
       proxy: Object.fromEntries(
