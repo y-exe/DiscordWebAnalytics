@@ -671,7 +671,7 @@ async def get_daily_history(year: int, month: int, response: Response, request: 
     f = ["created_at >= $1", "created_at < $2", "is_bot = FALSE"]
     add_channel_scope_filter(params, f, "channel_id", await get_channel_scope_ids(channel_id))
     where = " AND ".join(f)
-    t_rows = await pool.fetch(f"SELECT DATE(created_at) as d, count(*) as c FROM messages WHERE {where} GROUP BY DATE(created_at) ORDER BY d", *params)
+    t_rows = await pool.fetch(f"SELECT DATE(created_at) as d, count(*) as c FROM messages WHERE {where} GROUP BY DATE(created_at)", *params)
     top_where = where.replace('channel_id', 'm.channel_id').replace('created_at', 'm.created_at').replace('is_bot', 'm.is_bot')
     top_u_sql = f"SELECT m.user_id, count(*) as c FROM messages m LEFT JOIN users u ON m.user_id = u.user_id WHERE {top_where} AND {DELETED_USER_FILTER} GROUP BY m.user_id ORDER BY c DESC LIMIT 100"
     top_u = await pool.fetch(top_u_sql, *params)
@@ -685,7 +685,7 @@ async def get_daily_history(year: int, month: int, response: Response, request: 
         ids_plist = [int(i) for i in target_ids]
         f_params = params + [ids_plist]
         p_idx = f"${len(f_params)}"
-        rows = await pool.fetch(f"SELECT DATE(created_at) as d, user_id, count(*) as c FROM messages WHERE {where} AND user_id = ANY({p_idx}::bigint[]) GROUP BY DATE(created_at), user_id ORDER BY d", *f_params)
+        rows = await pool.fetch(f"SELECT DATE(created_at) as d, user_id, count(*) as c FROM messages WHERE {where} AND user_id = ANY({p_idx}::bigint[]) GROUP BY DATE(created_at), user_id", *f_params)
         for r in rows:
             d = r['d'].strftime("%Y-%m-%d")
             if d not in data_map: data_map[d] = {"date": d, "total": 0}
@@ -708,7 +708,8 @@ async def get_total_history(response: Response, channel_id: Optional[int] = Quer
     p = []; f = ["is_bot = FALSE"]
     add_channel_scope_filter(p, f, "channel_id", await get_channel_scope_ids(channel_id))
     if end_date: p.append(end_date); f.append(f"created_at <= ${len(p)}")
-    t_rows = await pool.fetch(f"SELECT DATE(created_at) as d, count(*) as c FROM messages WHERE {' AND '.join(f)} GROUP BY DATE(created_at) ORDER BY d", *p)
+    # chart_data is sorted after merging user rows, so sorting every message here only forces an external sort.
+    t_rows = await pool.fetch(f"SELECT DATE(created_at) as d, count(*) as c FROM messages WHERE {' AND '.join(f)} GROUP BY DATE(created_at)", *p)
     line_f = (" AND ".join(f)).replace('channel_id', 'm.channel_id').replace('created_at', 'm.created_at')
     top_u = await pool.fetch(f"SELECT m.user_id, count(*) as c FROM messages m LEFT JOIN users u ON m.user_id = u.user_id WHERE {line_f} AND {DELETED_USER_FILTER} GROUP BY m.user_id ORDER BY c DESC LIMIT 100", *p)
     target_ids = [str(r['user_id']) for r in top_u]
@@ -720,7 +721,7 @@ async def get_total_history(response: Response, channel_id: Optional[int] = Quer
     if target_ids:
         ids_plist = [int(i) for i in target_ids]
         up = p + [ids_plist]
-        rows = await pool.fetch(f"SELECT DATE(created_at) as d, user_id, count(*) as c FROM messages WHERE {' AND '.join(f)} AND user_id = ANY(${len(up)}::bigint[]) GROUP BY DATE(created_at), user_id ORDER BY d", *up)
+        rows = await pool.fetch(f"SELECT DATE(created_at) as d, user_id, count(*) as c FROM messages WHERE {' AND '.join(f)} AND user_id = ANY(${len(up)}::bigint[]) GROUP BY DATE(created_at), user_id", *up)
         for r in rows:
             d = r['d'].strftime("%Y-%m-%d")
             if d not in data_map: data_map[d] = {"date": d, "total": 0}
@@ -741,7 +742,8 @@ async def get_monthly_heatmap(year: int, month: int, response: Response, request
     start_date, end_date = get_month_bounds(year, month)
     p = [start_date, end_date]; f = ["created_at >= $1", "created_at < $2", "is_bot = FALSE"]
     add_channel_scope_filter(p, f, "channel_id", await get_channel_scope_ids(channel_id))
-    rows = await pool.fetch(f"SELECT EXTRACT(DOW FROM created_at AT TIME ZONE 'Asia/Tokyo') as dow, EXTRACT(HOUR FROM created_at AT TIME ZONE 'Asia/Tokyo') as hour, count(*) as count FROM messages WHERE {' AND '.join(f)} GROUP BY dow, hour ORDER BY dow, hour", *p)
+    # The heatmap client indexes by (dow, hour), so result order is not significant.
+    rows = await pool.fetch(f"SELECT EXTRACT(DOW FROM created_at AT TIME ZONE 'Asia/Tokyo') as dow, EXTRACT(HOUR FROM created_at AT TIME ZONE 'Asia/Tokyo') as hour, count(*) as count FROM messages WHERE {' AND '.join(f)} GROUP BY dow, hour", *p)
     res = [{"dow": int(r['dow']), "hour": int(r['hour']), "count": r['count']} for r in rows]
     set_cache(ckey, res, ttl=600)
     return res
@@ -756,7 +758,8 @@ async def get_total_heatmap(response: Response, channel_id: Optional[int] = Quer
     p = []; f = ["is_bot = FALSE"]
     add_channel_scope_filter(p, f, "channel_id", await get_channel_scope_ids(channel_id))
     if end_date: p.append(end_date); f.append(f"created_at <= ${len(p)}")
-    rows = await pool.fetch(f"SELECT EXTRACT(DOW FROM created_at AT TIME ZONE 'Asia/Tokyo') as dow, EXTRACT(HOUR FROM created_at AT TIME ZONE 'Asia/Tokyo') as hour, count(*) as count FROM messages WHERE {' AND '.join(f)} GROUP BY dow, hour ORDER BY dow, hour", *p)
+    # The heatmap client indexes by (dow, hour); avoid sorting millions of source rows for 168 result buckets.
+    rows = await pool.fetch(f"SELECT EXTRACT(DOW FROM created_at AT TIME ZONE 'Asia/Tokyo') as dow, EXTRACT(HOUR FROM created_at AT TIME ZONE 'Asia/Tokyo') as hour, count(*) as count FROM messages WHERE {' AND '.join(f)} GROUP BY dow, hour", *p)
     res = [{"dow": int(r['dow']), "hour": int(r['hour']), "count": r['count']} for r in rows]
     set_cache(ckey, res, ttl=ttl)
     return res

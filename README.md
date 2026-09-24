@@ -74,7 +74,7 @@ python db/migrate.py
 
 ## PostgreSQLの集計診断
 
-`db/diagnostics.sql`は一時ファイル書き出し量、`pg_stat_statements`のクエリ統計、テーブルとインデックスのサイズを確認します。クエリ統計を使うには、PostgreSQLの起動設定で`pg_stat_statements`を事前ロードして再起動し、対象DBで一度`CREATE EXTENSION pg_stat_statements;`を実行する必要があります。Kubernetes環境ではGitOpsのPostgreSQL設定から適用してください。診断SQLの実行自体は読み取り専用です。
+`db/diagnostics.sql`は一時ファイル書き出し量、`pg_stat_statements`のクエリ統計、テーブルとインデックスのサイズを確認します。クエリ統計を使うには、PostgreSQLの起動設定で`pg_stat_statements`を事前ロードして再起動した後、マイグレーションを実行します。診断SQLの実行自体は読み取り専用です。
 
 ## ライセンス
 
