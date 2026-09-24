@@ -340,10 +340,15 @@ async def startup():
         safe_dsn = f"{parsed.scheme}://{parsed.username}:****@{parsed.hostname}:{parsed.port}{parsed.path}"
         logger.info(f"Connecting to database at {safe_dsn}")
         
-        pool = await asyncpg.create_pool(DB_DSN, min_size=10, max_size=50, ssl=False, command_timeout=60)
+        pool = await asyncpg.create_pool(
+            DB_DSN,
+            min_size=10,
+            max_size=50,
+            ssl=False,
+            command_timeout=60,
+            server_settings={"application_name": "ymkw-backend"},
+        )
         logger.info("Database connection pool created (size: 10-50).")
-        await pool.execute("ALTER TABLE channels ADD COLUMN IF NOT EXISTS category_id BIGINT")
-        await pool.execute("CREATE INDEX IF NOT EXISTS idx_channels_category_id ON channels (category_id)")
         asyncio.create_task(warm_total_cache_loop())
     except Exception as e:
         logger.error(f"Failed to create database pool: {e}")

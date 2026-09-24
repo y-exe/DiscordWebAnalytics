@@ -59,6 +59,23 @@ Cloudflareがオリジンへ直接接続する構成では、[Cloudflare公式IP
 python scripts/generate_admin_password_hash.py
 ```
 
+## データベースのスキーマ変更
+
+PostgreSQLのDDLは`db/migrations/`で管理します。BotやAPI、履歴スキャナーの起動時にはスキーマを変更しません。
+
+既存DBへの初回導入時も、初期マイグレーションは既存テーブル・インデックスを確認して不足分だけ作成し、既存データは変更しません。DB接続可能な環境で次を実行してください。
+
+```bash
+python -m pip install -r backend/requirements.txt
+python db/migrate.py
+```
+
+`DB_DSN`は環境変数、`Bot/.env`または`backend/.env`から読み込みます。スキーマを必要とするアプリを更新するときは、アプリのデプロイ前にマイグレーションを実行してください。適用済みのマイグレーションファイルは編集せず、新しい番号のSQLファイルを追加します。
+
+## PostgreSQLの集計診断
+
+`db/diagnostics.sql`は一時ファイル書き出し量、`pg_stat_statements`のクエリ統計、テーブルとインデックスのサイズを確認します。クエリ統計を使うには、PostgreSQLの起動設定で`pg_stat_statements`を事前ロードして再起動し、対象DBで一度`CREATE EXTENSION pg_stat_statements;`を実行する必要があります。Kubernetes環境ではGitOpsのPostgreSQL設定から適用してください。診断SQLの実行自体は読み取り専用です。
+
 ## ライセンス
 
 [AGPL-3.0](LICENSE)  

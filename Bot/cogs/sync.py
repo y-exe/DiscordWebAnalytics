@@ -10,31 +10,6 @@ class SyncData(commands.Cog):
         self.db_dsn = config.DB_DSN
 
     async def cog_load(self):
-        pool = await asyncpg.create_pool(self.db_dsn)
-        
-        await pool.execute('''
-            CREATE TABLE IF NOT EXISTS channels (
-                channel_id BIGINT PRIMARY KEY,
-                name TEXT NOT NULL,
-                category_name TEXT,
-                category_id BIGINT,
-                position INTEGER,
-                is_active BOOLEAN DEFAULT TRUE
-            );
-            ALTER TABLE channels ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE;
-            ALTER TABLE channels ADD COLUMN IF NOT EXISTS category_id BIGINT;
-        ''')
-
-        await pool.execute('''
-            CREATE TABLE IF NOT EXISTS users (
-                user_id BIGINT PRIMARY KEY,
-                display_name TEXT NOT NULL,
-                username TEXT NOT NULL,
-                avatar_url TEXT
-            );
-        ''')
-
-        await pool.close()
         self.sync_loop.start()
         self.fetch_missing_users_loop.start()
 
@@ -44,7 +19,10 @@ class SyncData(commands.Cog):
         guild = self.bot.get_guild(config.GUILD_ID)
         if not guild: return
 
-        pool = await asyncpg.create_pool(self.db_dsn)
+        pool = await asyncpg.create_pool(
+            self.db_dsn,
+            server_settings={"application_name": "ymkw-bot-sync"},
+        )
         try:
             channel_data = []
             channels = list(guild.text_channels) + list(getattr(guild, "forums", [])) + list(await guild.active_threads())
@@ -108,7 +86,10 @@ class SyncData(commands.Cog):
     async def fetch_missing_users_loop(self):
         await self.bot.wait_until_ready()
         
-        pool = await asyncpg.create_pool(self.db_dsn)
+        pool = await asyncpg.create_pool(
+            self.db_dsn,
+            server_settings={"application_name": "ymkw-bot-sync"},
+        )
         try:
             missing_ids = await pool.fetch('''
                 SELECT DISTINCT m.user_id 

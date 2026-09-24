@@ -65,7 +65,10 @@ class Ranking(commands.Cog):
         # self.monthly_task.start()
 
     async def get_db_pool(self):
-        return await asyncpg.create_pool(config.DB_DSN)
+        return await asyncpg.create_pool(
+            config.DB_DSN,
+            server_settings={"application_name": "ymkw-bot-ranking"},
+        )
 
     def create_ranking_view(self, title: str, rows, year: int, month: int, show_role_reward: bool = True, custom_url: str = None):
         container = ui.Container(accent_color=0x00ddff)

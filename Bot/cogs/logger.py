@@ -11,35 +11,10 @@ class Logger(commands.Cog):
         self.known_channel_ids = set()
 
     async def cog_load(self):
-        self.pool = await asyncpg.create_pool(self.db_dsn)
-        await self.pool.execute('''
-            CREATE TABLE IF NOT EXISTS channels (
-                channel_id BIGINT PRIMARY KEY,
-                name TEXT NOT NULL,
-                category_name TEXT,
-                category_id BIGINT,
-                position INTEGER,
-                is_active BOOLEAN DEFAULT TRUE
-            );
-            ALTER TABLE channels ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE;
-            ALTER TABLE channels ADD COLUMN IF NOT EXISTS category_id BIGINT;
-
-            CREATE TABLE IF NOT EXISTS messages (
-                message_id BIGINT PRIMARY KEY,
-                user_id BIGINT NOT NULL,
-                channel_id BIGINT NOT NULL,
-                guild_id BIGINT NOT NULL,
-                created_at TIMESTAMP WITH TIME ZONE NOT NULL,
-                is_bot BOOLEAN DEFAULT FALSE,
-                char_count INTEGER DEFAULT 0
-            );
-            CREATE INDEX IF NOT EXISTS idx_messages_user ON messages (user_id);
-            CREATE INDEX IF NOT EXISTS idx_messages_channel ON messages (channel_id);
-            CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages (created_at);
-            CREATE INDEX IF NOT EXISTS idx_messages_human_created_user ON messages (created_at, user_id) WHERE is_bot = FALSE;
-            CREATE INDEX IF NOT EXISTS idx_messages_human_channel_created_user ON messages (channel_id, created_at, user_id) WHERE is_bot = FALSE;
-            CREATE INDEX IF NOT EXISTS idx_messages_human_user_created ON messages (user_id, created_at) WHERE is_bot = FALSE;
-        ''')
+        self.pool = await asyncpg.create_pool(
+            self.db_dsn,
+            server_settings={"application_name": "ymkw-bot-logger"},
+        )
 
     async def cog_unload(self):
         if self.pool:

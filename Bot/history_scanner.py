@@ -38,10 +38,12 @@ async def backfill():
         logger.error("DB_DSN is not configured.")
         return
 
-    pool = await asyncpg.create_pool(config.DB_DSN, command_timeout=120)
+    pool = await asyncpg.create_pool(
+        config.DB_DSN,
+        command_timeout=120,
+        server_settings={"application_name": "ymkw-history-scanner"},
+    )
     try:
-        await ensure_tables(pool)
-        
         args = BACKFILL_ARGS or parse_args()
         if args.reset_progress:
             await reset_progress(pool)
@@ -122,47 +124,6 @@ def parse_datetime(value):
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=datetime.timezone(datetime.timedelta(hours=9)))
     return parsed.astimezone(datetime.timezone.utc)
-
-async def ensure_tables(pool):
-    async with pool.acquire() as conn:
-        await conn.execute('''
-            CREATE TABLE IF NOT EXISTS messages (
-                message_id BIGINT PRIMARY KEY,
-                user_id BIGINT NOT NULL,
-                channel_id BIGINT NOT NULL,
-                guild_id BIGINT NOT NULL,
-                created_at TIMESTAMP WITH TIME ZONE NOT NULL,
-                is_bot BOOLEAN DEFAULT FALSE,
-                char_count INTEGER DEFAULT 0
-            );
-
-            CREATE TABLE IF NOT EXISTS users (
-                user_id BIGINT PRIMARY KEY,
-                display_name TEXT NOT NULL,
-                username TEXT NOT NULL,
-                avatar_url TEXT
-            );
-
-            CREATE TABLE IF NOT EXISTS channels (
-                channel_id BIGINT PRIMARY KEY,
-                name TEXT NOT NULL,
-                category_name TEXT,
-                category_id BIGINT,
-                position INTEGER,
-                is_active BOOLEAN DEFAULT TRUE
-            );
-
-            CREATE TABLE IF NOT EXISTS backfill_progress (
-                source_id BIGINT PRIMARY KEY,
-                source_name TEXT NOT NULL,
-                last_message_id BIGINT,
-                last_created_at TIMESTAMP WITH TIME ZONE,
-                updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-            );
-
-            ALTER TABLE channels ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE;
-            ALTER TABLE channels ADD COLUMN IF NOT EXISTS category_id BIGINT;
-        ''')
 
 async def collect_threads(guild, parent_channels):
     threads_by_id = {}
