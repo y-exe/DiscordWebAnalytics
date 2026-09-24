@@ -342,8 +342,8 @@ async def startup():
         
         pool = await asyncpg.create_pool(
             DB_DSN,
-            min_size=10,
-            max_size=50,
+            min_size=1,
+            max_size=8,
             ssl=False,
             command_timeout=60,
             server_settings={"application_name": "ymkw-backend"},

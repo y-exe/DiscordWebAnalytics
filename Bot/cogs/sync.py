@@ -21,6 +21,8 @@ class SyncData(commands.Cog):
 
         pool = await asyncpg.create_pool(
             self.db_dsn,
+            min_size=1,
+            max_size=3,
             server_settings={"application_name": "ymkw-bot-sync"},
         )
         try:
@@ -88,6 +90,8 @@ class SyncData(commands.Cog):
         
         pool = await asyncpg.create_pool(
             self.db_dsn,
+            min_size=1,
+            max_size=3,
             server_settings={"application_name": "ymkw-bot-sync"},
         )
         try:

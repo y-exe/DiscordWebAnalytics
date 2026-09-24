@@ -13,6 +13,8 @@ class Logger(commands.Cog):
     async def cog_load(self):
         self.pool = await asyncpg.create_pool(
             self.db_dsn,
+            min_size=1,
+            max_size=4,
             server_settings={"application_name": "ymkw-bot-logger"},
         )
 

@@ -40,6 +40,8 @@ async def backfill():
 
     pool = await asyncpg.create_pool(
         config.DB_DSN,
+        min_size=1,
+        max_size=5,
         command_timeout=120,
         server_settings={"application_name": "ymkw-history-scanner"},
     )

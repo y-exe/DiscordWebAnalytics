@@ -67,6 +67,8 @@ class Ranking(commands.Cog):
     async def get_db_pool(self):
         return await asyncpg.create_pool(
             config.DB_DSN,
+            min_size=1,
+            max_size=3,
             server_settings={"application_name": "ymkw-bot-ranking"},
         )
 
