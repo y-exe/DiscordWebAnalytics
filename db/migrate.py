@@ -60,13 +60,25 @@ async def migrate() -> None:
                     raise RuntimeError(f"Applied migration was edited: {path.name}")
                 continue
 
-            async with connection.transaction():
-                await connection.execute(sql)
+            non_transactional = sql.lstrip().startswith("-- migrate: no-transaction")
+            if non_transactional:
+                statement = "\n".join(
+                    line for line in sql.splitlines() if line.strip() != "-- migrate: no-transaction"
+                )
+                await connection.execute(statement)
                 await connection.execute(
                     "INSERT INTO schema_migrations (filename, checksum) VALUES ($1, $2)",
                     path.name,
                     checksum,
                 )
+            else:
+                async with connection.transaction():
+                    await connection.execute(sql)
+                    await connection.execute(
+                        "INSERT INTO schema_migrations (filename, checksum) VALUES ($1, $2)",
+                        path.name,
+                        checksum,
+                    )
             print(f"Applied {path.name}")
     finally:
         try:

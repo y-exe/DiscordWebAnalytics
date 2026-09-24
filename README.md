@@ -70,7 +70,7 @@ python -m pip install -r backend/requirements.txt
 python db/migrate.py
 ```
 
-`DB_DSN`は環境変数、`Bot/.env`または`backend/.env`から読み込みます。スキーマを必要とするアプリを更新するときは、アプリのデプロイ前にマイグレーションを実行してください。適用済みのマイグレーションファイルは編集せず、新しい番号のSQLファイルを追加します。
+`DB_DSN`は環境変数、`Bot/.env`または`backend/.env`から読み込みます。スキーマを必要とするアプリを更新するときは、アプリのデプロイ前にマイグレーションを実行してください。適用済みのマイグレーションファイルは編集せず、新しい番号のSQLファイルを追加します。`CREATE INDEX CONCURRENTLY`などトランザクション外で実行するSQLは、ファイルの先頭に`-- migrate: no-transaction`を指定し、1ファイルにつき1ステートメントにします。
 
 ## PostgreSQLの集計診断
 
