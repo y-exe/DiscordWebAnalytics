@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import Dashboard from "./Dashboard";
 
 const ADMIN_API_URL = process.env.NEXT_PUBLIC_ADMIN_API_URL || "https://api.ymkw.top";
@@ -12,21 +13,22 @@ function currentJstMonth() {
 }
 
 function browserUserId() {
+  if (typeof document === "undefined") return null;
   const value = document.cookie.split(/;\s*/).find((cookie) => cookie.startsWith("user_id="))?.slice("user_id=".length);
   return value && value !== "guest" ? decodeURIComponent(value) : null;
 }
 
 export default function AdminMonthGate({ year, month }) {
+  const searchParams = useSearchParams();
+  const channelId = searchParams?.get("channel") || null;
   const [state, setState] = useState("checking");
   const [error, setError] = useState("");
   const [userId, setUserId] = useState(null);
-  const [channelId, setChannelId] = useState(null);
   const targetYear = Number(year);
   const targetMonth = Number(month);
 
   useEffect(() => {
     setUserId(browserUserId());
-    setChannelId(new URLSearchParams(window.location.search).get("channel"));
     const current = currentJstMonth();
     const restricted = targetYear > current.year || (targetYear === current.year && targetMonth >= current.month);
     if (!restricted) {
@@ -60,7 +62,7 @@ export default function AdminMonthGate({ year, month }) {
     setError(response.status === 429 ? "試行回数が多すぎます。10分後にもう一度お試しください。" : "パスワードが正しくありません。");
   }
 
-  if (state === "allowed") return <Dashboard year={year} month={month} channelId={channelId} userId={userId} />;
+  if (state === "allowed") return <Dashboard key={`${year}-${month}-${channelId ?? 'all'}`} year={year} month={month} channelId={channelId} userId={userId} />;
   if (state === "checking") return <div className="min-h-[80vh]" aria-busy="true" />;
 
   return (

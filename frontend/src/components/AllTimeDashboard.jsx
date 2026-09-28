@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import PageHeader, { ReportPeriodCard } from './PageHeader';
 import AnalysisPanel from './charts/AnalysisPanel';
 import StatsCard from './StatsCard';
@@ -13,9 +14,22 @@ import MouseEffectCard from './MouseEffectCard';
 import { fetchAPI } from '@/lib/api';
 import { Card } from "@/components/ui/card";
 
-export default function AllTimeDashboard({ channelId, userId }) {
+function browserUserId() {
+    if (typeof document === "undefined") return null;
+    const value = document.cookie.split(/;\s*/).find((cookie) => cookie.startsWith("user_id="))?.slice("user_id=".length);
+    return value && value !== "guest" ? decodeURIComponent(value) : null;
+}
+
+export default function AllTimeDashboard({ channelId: propChannelId, userId: propUserId }) {
+    const searchParams = useSearchParams();
+    const channelId = searchParams?.get('channel') || propChannelId || null;
+    const [userId, setUserId] = useState(propUserId || null);
     const [data, setData] = useState(null);
     const [focusedUserId, setFocusedUserId] = useState(null);
+
+    useEffect(() => {
+        setUserId(propUserId || browserUserId());
+    }, [propUserId]);
 
     useEffect(() => {
         window.__ymkw_data_ready = false;
