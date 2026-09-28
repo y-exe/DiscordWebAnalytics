@@ -1,10 +1,27 @@
 import React, { useState, useEffect, useRef } from 'react';
+import Link from 'next/link';
 import { LogIn, AlertCircle, LayoutGrid, Hash } from 'lucide-react';
 import MonthSelector from './MonthSelector';
 import { fetchAPI } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 
+function getLoggedInUser() {
+    const cookies = document.cookie.split('; ').reduce((all, entry) => {
+        const separator = entry.indexOf('=');
+        if (separator !== -1) all[entry.slice(0, separator)] = entry.slice(separator + 1);
+        return all;
+    }, {});
+    const id = cookies.user_id ? decodeURIComponent(cookies.user_id) : '';
+    if (!id || id === 'guest') return {};
+    return {
+        id,
+        name: cookies.user_name ? decodeURIComponent(cookies.user_name) : '',
+        avatar: cookies.user_avatar ? decodeURIComponent(cookies.user_avatar) : '',
+    };
+}
+
 export default function MobileNavigation({ user = {}, currentPath = '', queryParams = '' }) {
+    const [currentUser, setCurrentUser] = useState(user);
     const [isOpen, setIsOpen] = useState(false);
     const [isMenuMounted, setIsMenuMounted] = useState(false);
     const [isMenuVisible, setIsMenuVisible] = useState(false);
@@ -12,6 +29,13 @@ export default function MobileNavigation({ user = {}, currentPath = '', queryPar
     const [data, setData] = useState({ channels: [] });
     const closeTimerRef = useRef(null);
     const openFrameRef = useRef(null);
+
+    useEffect(() => {
+        const syncUser = () => setCurrentUser(getLoggedInUser());
+        syncUser();
+        window.addEventListener('ymkw:auth-changed', syncUser);
+        return () => window.removeEventListener('ymkw:auth-changed', syncUser);
+    }, []);
 
     useEffect(() => {
         const fetchNavData = async () => {
@@ -67,7 +91,8 @@ export default function MobileNavigation({ user = {}, currentPath = '', queryPar
         cookies.forEach(c => {
             document.cookie = `${c}=; path=/; max-age=0`;
         });
-        window.location.reload();
+        window.dispatchEvent(new Event('ymkw:auth-changed'));
+        setIsLogoutModalOpen(false);
     };
 
     const handleLogin = () => {
@@ -100,6 +125,10 @@ export default function MobileNavigation({ user = {}, currentPath = '', queryPar
     const monthlyBaseUrl = `/month/${prevYear}/${prevMonth}`;
 
     const allTimeUrl = '/all';
+    const startNavigation = () => {
+        window.dispatchEvent(new Event('ymkw:dashboard-navigation'));
+        closeMenu();
+    };
 
     const isDashboard = currentPath.includes('/month/') || currentPath === '/all';
     const dashboardBasePath = isDashboard ? currentPath.split('?')[0] : monthlyBaseUrl;
@@ -151,12 +180,12 @@ export default function MobileNavigation({ user = {}, currentPath = '', queryPar
                     </a>
 
                     <div className="w-9 flex justify-end">
-                        {user?.id && user.id !== 'guest' ? (
+                        {currentUser?.id && currentUser.id !== 'guest' ? (
                             <button onClick={() => setIsLogoutModalOpen(true)} className="active:scale-90 transition-transform focus:outline-none">
-                                {user.avatar ? (
-                                    <img src={user.avatar} className="w-8 h-8 rounded-full border border-white/20 shadow-sm" />
+                                {currentUser.avatar ? (
+                                    <img src={currentUser.avatar} className="w-8 h-8 rounded-full border border-white/20 shadow-sm" alt="" />
                                 ) : (
-                                    <div className="w-8 h-8 rounded-full bg-white text-gray-950 flex items-center justify-center text-[10px] font-bold uppercase italic">{user.name ? user.name[0] : 'U'}</div>
+                                    <div className="w-8 h-8 rounded-full bg-white text-gray-950 flex items-center justify-center text-[10px] font-bold uppercase italic">{currentUser.name ? currentUser.name[0] : 'U'}</div>
                                 )}
                             </button>
                         ) : (
@@ -189,17 +218,17 @@ export default function MobileNavigation({ user = {}, currentPath = '', queryPar
                     <div className={`absolute top-24 left-4 right-4 bottom-8 bg-[#101114] border border-white/10 rounded-[2.5rem] shadow-2xl shadow-black/40 flex flex-col overflow-hidden transform-gpu transition-[opacity,transform] duration-300 ease-out ${isMenuVisible ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 -translate-y-3 scale-95'}`}>
                         <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
                             <div className={`bg-white/8 p-1.5 rounded-2xl flex mb-8 text-[10px] font-black uppercase tracking-widest border border-white/10 shadow-inner transition-[opacity,transform] duration-300 ${isMenuVisible ? 'opacity-100 translate-y-0 delay-75' : 'opacity-0 -translate-y-2 delay-0'}`}>
-                                <a href={monthlyBaseUrl} className={`flex-1 py-2.5 text-center rounded-xl transition-all ${pageMode === 'month' ? 'bg-white text-gray-950 shadow-sm' : 'text-white/45 hover:text-white'}`}>月間</a>
-                                <a href={allTimeUrl} className={`flex-1 py-2.5 text-center rounded-xl transition-all ${pageMode === 'open' ? 'bg-white text-gray-950 shadow-sm' : 'text-white/45 hover:text-white'}`}>累計</a>
+                                <Link href={monthlyBaseUrl} onClick={startNavigation} className={`flex-1 py-2.5 text-center rounded-xl transition-all ${pageMode === 'month' ? 'bg-white text-gray-950 shadow-sm' : 'text-white/45 hover:text-white'}`}>月間</Link>
+                                <Link href={allTimeUrl} onClick={startNavigation} className={`flex-1 py-2.5 text-center rounded-xl transition-all ${pageMode === 'open' ? 'bg-white text-gray-950 shadow-sm' : 'text-white/45 hover:text-white'}`}>累計</Link>
                             </div>
 
                             <div className={`space-y-6 transition-[opacity,transform] duration-300 ${isMenuVisible ? 'opacity-100 translate-y-0 delay-100' : 'opacity-0 -translate-y-3 delay-0'}`}>
                                 {pageMode === 'month' && <MonthSelector currentYear={currentId} currentMonth={currentMonth} dark />}
 
                                 <nav className="space-y-8 pt-4 text-left">
-                                    <a href={dashboardBasePath} onClick={closeMenu} className={`flex items-center gap-3 px-4 py-3 text-sm rounded-2xl font-black transition-all border shadow-sm ${isDashboard && !currentChannelId ? 'bg-white text-gray-950 border-white shadow-black/20' : 'bg-transparent text-white/65 border-transparent hover:bg-white/8 hover:text-white'}`}>
+                                    <Link href={dashboardBasePath} onClick={startNavigation} className={`flex items-center gap-3 px-4 py-3 text-sm rounded-2xl font-black transition-all border shadow-sm ${isDashboard && !currentChannelId ? 'bg-white text-gray-950 border-white shadow-black/20' : 'bg-transparent text-white/65 border-transparent hover:bg-white/8 hover:text-white'}`}>
                                         <LayoutGrid className="w-4 h-4" /> 総合
-                                    </a>
+                                    </Link>
                                     {categories.map(cat => (
                                         <div key={cat} className="space-y-2">
                                             <h3 className="text-[10px] font-black text-white/30 uppercase tracking-widest px-2">{cat}</h3>
@@ -207,9 +236,9 @@ export default function MobileNavigation({ user = {}, currentPath = '', queryPar
                                                 {grouped[cat].map(ch => {
                                                     const isActive = isDashboard && currentChannelId === String(ch.id);
                                                     return (
-                                                        <a key={ch.id} href={`${dashboardBasePath}?channel=${ch.id}`} onClick={closeMenu} className={`flex items-center gap-3 p-3 rounded-xl text-sm font-bold transition-all ${isActive ? 'bg-white text-gray-950' : 'text-white/60 hover:bg-white/8 hover:text-white'}`}>
+                                                        <Link key={ch.id} href={`${dashboardBasePath}?channel=${ch.id}`} onClick={startNavigation} className={`flex items-center gap-3 p-3 rounded-xl text-sm font-bold transition-all ${isActive ? 'bg-white text-gray-950' : 'text-white/60 hover:bg-white/8 hover:text-white'}`}>
                                                             <Hash className={`w-4 h-4 ${isActive ? 'text-gray-950' : 'text-white/25'}`} /> {ch.name}
-                                                        </a>
+                                                        </Link>
                                                     );
                                                 })}
                                             </div>

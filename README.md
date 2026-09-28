@@ -5,12 +5,12 @@
   [![discord.py](https://img.shields.io/badge/discord.py-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discordpy.readthedocs.io/)
   [![Python 3.10](https://img.shields.io/badge/Python-3.10-yellow?style=flat-square&logo=python&logoColor=white)](https://www.python.org/downloads/release/python-3100/)
   [![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
-  [![Astro](https://img.shields.io/badge/Astro-FF5D01?style=flat-square&logo=astro&logoColor=white)](https://astro.build/)
+  [![Next.js](https://img.shields.io/badge/Next.js-000000?style=flat-square&logo=nextdotjs&logoColor=white)](https://nextjs.org/)
   [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-316192?style=flat-square&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
   [![LICENSE](https://img.shields.io/badge/LICENSE-AGPL--3.0-green.svg?style=flat-square)](LICENSE)
 </h1>
 Discord鯖のアクティビティ収集、集計、可視化するための統合システムです。<br>
-Discord.pyによるデータ収集、FastAPIによるデータ提供、Astro/ReactによるWebダッシュボードで構成<br>
+Discord.pyによるデータ収集、FastAPIによるデータ提供、Next.js/ReactによるWebダッシュボードで構成<br>
 <br>
 
 <img src="public/dashboard.png" alt="dashboard">
@@ -43,7 +43,7 @@ Discordの今までのチャット履歴等を全て取得し、視覚化する�
 ```
 - bot/ : データ収集およびコマンド操作を行うDiscordBot
 - backend/ : データベースと通信し、フロントエンドにJSONを提供するRESTAPI
-- frontend/ : Webダッシュボード (Astro + React)
+- frontend/ : Webダッシュボード (Next.js App Router + React)
 ```
 
 ## 環境変数について
@@ -58,6 +58,12 @@ Cloudflareがオリジンへ直接接続する構成では、[Cloudflare公式IP
 ```bash
 python scripts/generate_admin_password_hash.py
 ```
+
+## フロントエンド開発・デプロイ
+
+`frontend/`はNext.js App Routerです。開発には`npm run dev`、通常ビルドには`npm run build`を使います。
+Cloudflare Workers向けの成果物は`npm run cf:build`で生成し、`npm run preview`でWorkersランタイムを確認できます。実際の配備は`npm run deploy`です。
+環境変数は`NEXT_PUBLIC_API_URL`、`NEXT_PUBLIC_ADMIN_API_URL`、`GA_ID`を利用します。サーバー専用のAPI URLを分ける必要がある場合は`API_URL`を設定します。
 
 ## データベースのスキーマ変更
 

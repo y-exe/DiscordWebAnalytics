@@ -1,5 +1,5 @@
-const API_URL = import.meta.env.DEV ? "" : "https://api.ymkw.top";
-const SSR_API_URL = import.meta.env.PUBLIC_API_URL || "https://api.ymkw.top";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || (process.env.NODE_ENV === "development" ? "" : "https://api.ymkw.top");
+const SSR_API_URL = process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || "https://api.ymkw.top";
 
 interface FetchAPIOptions extends Omit<RequestInit, 'signal'> {
     timeout?: number;

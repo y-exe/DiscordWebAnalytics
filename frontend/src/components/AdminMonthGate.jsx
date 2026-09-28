@@ -1,7 +1,9 @@
+"use client";
+
 import { useEffect, useState } from "react";
 import Dashboard from "./Dashboard";
 
-const ADMIN_API_URL = import.meta.env.PUBLIC_ADMIN_API_URL || "https://api.ymkw.top";
+const ADMIN_API_URL = process.env.NEXT_PUBLIC_ADMIN_API_URL || "https://api.ymkw.top";
 
 function currentJstMonth() {
   const now = new Date();
@@ -37,7 +39,9 @@ export default function AdminMonthGate({ year, month }) {
   }, [targetMonth, targetYear]);
 
   useEffect(() => {
-    if (state !== "checking") window.dispatchEvent(new Event("app-loaded"));
+    // 許可後は Dashboard 側の全データ取得完了を待つ。ここで閉じると、
+    // 月間画面だけローダーと実際のデータ取得がずれてしまう。
+    if (state === "login") window.dispatchEvent(new Event("app-loaded"));
   }, [state]);
 
   async function login(event) {

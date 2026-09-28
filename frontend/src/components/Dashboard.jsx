@@ -1,3 +1,5 @@
+"use client";
+
 import React, { useState, useEffect } from 'react';
 import PageHeader, { ReportPeriodCard } from './PageHeader';
 import AnalysisPanel from './charts/AnalysisPanel';

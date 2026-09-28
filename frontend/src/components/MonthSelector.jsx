@@ -1,9 +1,12 @@
+"use client";
+
 import React, { useState } from 'react';
 import { ChevronDown, Calendar } from 'lucide-react';
-import { navigate } from 'astro:transitions/client';
+import { useRouter } from 'next/navigation';
 
 export default function MonthSelector({ currentYear, currentMonth, dark = false }) {
   const [isOpen, setIsOpen] = useState(false);
+  const router = useRouter();
 
   const months = [];
   const now = new Date();
@@ -18,7 +21,8 @@ export default function MonthSelector({ currentYear, currentMonth, dark = false 
 
   const handleSelect = (year, month) => {
     const search = window.location.search;
-    navigate(`/month/${year}/${month}${search}`);
+    window.dispatchEvent(new Event('ymkw:dashboard-navigation'));
+    router.push(`/month/${year}/${month}${search}`);
   };
 
   const currentLabel = currentYear ? `${currentYear}年 ${currentMonth}月` : '期間を選択';

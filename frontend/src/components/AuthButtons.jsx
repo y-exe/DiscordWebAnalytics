@@ -2,14 +2,29 @@
 
 import { cn } from "@/lib/utils";
 import { AnimatePresence, motion, MotionConfig } from "framer-motion";
-import { Check, LogIn, LogOut, X } from "lucide-react";
-import { useState } from "react";
+import { Check, LogIn, LogOut, UserRound, X } from "lucide-react";
+import { useEffect, useState } from "react";
 
 const smoothSpring = {
     type: "spring",
     bounce: 0,
     duration: 0.35,
 };
+
+function getLoggedInUser() {
+    const cookies = document.cookie.split("; ").reduce((all, entry) => {
+        const separator = entry.indexOf("=");
+        if (separator !== -1) all[entry.slice(0, separator)] = entry.slice(separator + 1);
+        return all;
+    }, {});
+    const id = cookies.user_id ? decodeURIComponent(cookies.user_id) : "";
+    if (!id || id === "guest") return null;
+    return {
+        id,
+        name: cookies.user_name ? decodeURIComponent(cookies.user_name) : "",
+        avatar: cookies.user_avatar ? decodeURIComponent(cookies.user_avatar) : "",
+    };
+}
 
 export function LogoutButton({ className = "" }) {
     const [isExpanded, setIsExpanded] = useState(false);
@@ -19,12 +34,11 @@ export function LogoutButton({ className = "" }) {
     };
 
     const handleConfirm = () => {
-        document.cookie.split(";").forEach((c) => {
-            document.cookie = c
-                .replace(/^ +/, "")
-                .replace(/=.*/, "=;expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/");
+        ["user_id", "user_name", "user_avatar"].forEach((name) => {
+            document.cookie = `${name}=; path=/; max-age=0; SameSite=Lax`;
         });
-        location.reload();
+        window.dispatchEvent(new Event("ymkw:auth-changed"));
+        setIsExpanded(false);
     };
 
     const handleCancel = () => {
@@ -108,9 +122,34 @@ export function LogoutButton({ className = "" }) {
 }
 
 export function LoginButton({ className = "" }) {
+    const [user, setUser] = useState(null);
+
+    useEffect(() => {
+        const syncUser = () => setUser(getLoggedInUser());
+        syncUser();
+        window.addEventListener("ymkw:auth-changed", syncUser);
+        window.addEventListener("focus", syncUser);
+        return () => {
+            window.removeEventListener("ymkw:auth-changed", syncUser);
+            window.removeEventListener("focus", syncUser);
+        };
+    }, []);
+
     const handleLogin = () => {
         window.dispatchEvent(new Event('ymkw:open-login-modal'));
     };
+
+    if (user) {
+        return (
+            <div className={cn("inline-flex items-center gap-2", className)}>
+                <div className="inline-flex max-w-44 items-center gap-2 rounded-xl bg-secondary px-2 py-1.5 text-xs font-bold text-secondary-foreground">
+                    {user.avatar ? <img src={user.avatar} alt="" className="h-6 w-6 rounded-full object-cover" /> : <UserRound className="h-4 w-4" />}
+                    <span className="truncate">{user.name || "ログイン中"}</span>
+                </div>
+                <LogoutButton />
+            </div>
+        );
+    }
 
     return (
         <MotionConfig transition={smoothSpring}>

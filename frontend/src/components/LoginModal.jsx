@@ -63,12 +63,14 @@ export default function LoginModal() {
         setCookie('user_avatar', user.avatar || '');
 
         setIsOpen(false);
+        window.dispatchEvent(new Event('ymkw:auth-changed'));
         window.location.reload();
     };
 
     const handleSkip = () => {
         setCookie('user_id', 'guest');
         setIsOpen(false);
+        window.dispatchEvent(new Event('ymkw:auth-changed'));
     };
 
     return (

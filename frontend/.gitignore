@@ -1,11 +1,10 @@
-dist/
-.astro/
+.next/
+.open-next/
 node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
-astro-dev.log
 .env
 .env.production
 .DS_Store

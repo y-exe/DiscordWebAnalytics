@@ -1,17 +1,21 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "ymkw-top",
-  "compatibility_date": "2026-08-08",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2026-09-29",
+  "compatibility_flags": ["nodejs_compat"],
   "workers_dev": false,
   "assets": {
-    "directory": "./dist",
-    "html_handling": "drop-trailing-slash",
-    "not_found_handling": "404-page"
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
   },
   "routes": [
     {
       "pattern": "ymkw.top",
       "custom_domain": true
     }
-  ]
+  ],
+  "observability": {
+    "enabled": true
+  }
 }

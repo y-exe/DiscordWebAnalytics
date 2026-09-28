@@ -1,4 +1,3 @@
-import { env } from "cloudflare:workers";
 
 export const ADMIN_COOKIE_NAME = "__Secure-ymkw_admin";
 export const ADMIN_SESSION_MAX_AGE = 60 * 60 * 24;
@@ -10,7 +9,7 @@ const encoder = new TextEncoder();
 const loginAttempts = new Map<string, { count: number; resetAt: number }>();
 
 function getSecret(name: "ADMIN_PASSWORD_HASH" | "ADMIN_SESSION_SECRET"): string {
-  const value = (env as unknown as Record<string, unknown>)[name];
+  const value = process.env[name];
   return typeof value === "string" ? value.trim() : "";
 }
 
