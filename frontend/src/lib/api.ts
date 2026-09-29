@@ -70,8 +70,23 @@ export async function fetchAPI(
         }
     }
 
-    if (lastError) throw lastError;
+    if (lastError) {
+        redirectToErrorPage(lastError, isServer);
+        throw lastError;
+    }
     throw new Error("Fetch failed after retries");
+}
+
+function redirectToErrorPage(error: Error, isServer: boolean): void {
+    if (isServer || typeof window === "undefined" || !(error instanceof APIError) || error.status < 500) return;
+    if (window.location.pathname === "/error") return;
+
+    const params = new URLSearchParams({
+        code: String(error.status),
+        msg: error.message || "Bad Gateway",
+        url: error.url,
+    });
+    window.location.assign(`/error?${params.toString()}`);
 }
 
 function delay(ms: number): Promise<void> {
