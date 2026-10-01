@@ -84,8 +84,7 @@ python db/migrate.py
 
 ## ライセンス
 
-[AGPL-3.0](LICENSE)  
-改変した後、ネットワーク経由でユーザーにサービスを提供する場合、ソースコードの公開義務が発生します。
+[GPL-3.0](LICENSE)  
 
 ---
 © 2026 ymkw.top
