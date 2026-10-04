@@ -135,7 +135,7 @@ export default function MobileNavigation({ user = {}, currentPath = '', queryPar
 
     return (
         <>
-            <div className="fixed top-6 left-0 right-0 w-full z-[100] px-4 pointer-events-none flex justify-center">
+            <div className="fixed top-6 left-0 right-0 w-full z-100 px-4 pointer-events-none flex justify-center">
                 <div className="w-full max-w-sm h-14 bg-[#101114]/95 backdrop-blur-lg border border-white/10 rounded-full shadow-2xl shadow-black/30 flex items-center justify-between px-5 pointer-events-auto">
                     <Button
                         type="button"
@@ -161,7 +161,7 @@ export default function MobileNavigation({ user = {}, currentPath = '', queryPar
                         >
                             <path
                                 d="M4 12L20 12"
-                                className="origin-center -translate-y-[7px] transition-all duration-300 [transition-timing-function:cubic-bezier(.5,.85,.25,1.1)] group-aria-expanded:translate-x-0 group-aria-expanded:translate-y-0 group-aria-expanded:rotate-[315deg]"
+                                className="origin-center translate-y-[-7px] transition-all duration-300 [transition-timing-function:cubic-bezier(.5,.85,.25,1.1)] group-aria-expanded:translate-x-0 group-aria-expanded:translate-y-0 group-aria-expanded:rotate-315"
                             />
                             <path
                                 d="M4 12H20"
@@ -169,27 +169,27 @@ export default function MobileNavigation({ user = {}, currentPath = '', queryPar
                             />
                             <path
                                 d="M4 12H20"
-                                className="origin-center translate-y-[7px] transition-all duration-300 [transition-timing-function:cubic-bezier(.5,.85,.25,1.1)] group-aria-expanded:translate-y-0 group-aria-expanded:rotate-[135deg]"
+                                className="origin-center translate-y-[7px] transition-all duration-300 [transition-timing-function:cubic-bezier(.5,.85,.25,1.1)] group-aria-expanded:translate-y-0 group-aria-expanded:rotate-135"
                             />
                         </svg>
                     </Button>
 
                     <a href="/" className="flex items-center gap-2">
-                        <img src="/ymkw.webp" className="w-7 h-7 rounded-lg border border-white/10 shadow-sm" alt="Logo" />
+                        <img src="/ymkw.webp" className="w-7 h-7 rounded-lg border border-white/10 shadow-xs" alt="Logo" />
                         <span className="text-xs font-black text-white" style={{ fontFamily: '"Google Sans", sans-serif' }}>ymkw.top</span>
                     </a>
 
                     <div className="w-9 flex justify-end">
                         {currentUser?.id && currentUser.id !== 'guest' ? (
-                            <button onClick={() => setIsLogoutModalOpen(true)} className="active:scale-90 transition-transform focus:outline-none">
+                            <button onClick={() => setIsLogoutModalOpen(true)} className="active:scale-90 transition-transform focus:outline-hidden">
                                 {currentUser.avatar ? (
-                                    <img src={currentUser.avatar} className="w-8 h-8 rounded-full border border-white/20 shadow-sm" alt="" />
+                                    <img src={currentUser.avatar} className="w-8 h-8 rounded-full border border-white/20 shadow-xs" alt="" />
                                 ) : (
                                     <div className="w-8 h-8 rounded-full bg-white text-gray-950 flex items-center justify-center text-[10px] font-bold uppercase italic">{currentUser.name ? currentUser.name[0] : 'U'}</div>
                                 )}
                             </button>
                         ) : (
-                            <button onClick={handleLogin} className="p-2 text-white/70 active:scale-90 transition-transform focus:outline-none">
+                            <button onClick={handleLogin} className="p-2 text-white/70 active:scale-90 transition-transform focus:outline-hidden">
                                 <LogIn className="w-5 h-5" />
                             </button>
                         )}
@@ -198,9 +198,9 @@ export default function MobileNavigation({ user = {}, currentPath = '', queryPar
             </div>
 
             {isLogoutModalOpen && (
-                <div className="fixed inset-0 z-[110] flex items-center justify-center p-6 animate-fade-in">
+                <div className="fixed inset-0 z-110 flex items-center justify-center p-6 animate-fade-in">
                     <div className="absolute inset-0 bg-black/60 backdrop-blur-md" onClick={() => setIsLogoutModalOpen(false)} />
-                    <div className="relative bg-white w-full max-w-[280px] rounded-[2rem] shadow-2xl overflow-hidden p-8 text-center animate-slide-up">
+                    <div className="relative bg-white w-full max-w-[280px] rounded-4xl shadow-2xl overflow-hidden p-8 text-center animate-slide-up">
                         <div className="w-16 h-16 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4"><AlertCircle className="w-8 h-8" /></div>
                         <h3 className="text-lg font-black text-gray-900 mb-2 font-outfit">ログアウトしますか？</h3>
                         <p className="text-xs text-gray-500 mb-8 leading-relaxed">アカウントからログアウトします。</p>
@@ -213,20 +213,20 @@ export default function MobileNavigation({ user = {}, currentPath = '', queryPar
             )}
 
             {isMenuMounted && (
-                <div className={`fixed inset-0 z-[90] transition-opacity duration-200 ${isMenuVisible ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
-                    <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={closeMenu} />
+                <div className={`fixed inset-0 z-90 transition-opacity duration-200 ${isMenuVisible ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
+                    <div className="absolute inset-0 bg-black/40 backdrop-blur-xs" onClick={closeMenu} />
                     <div className={`absolute top-24 left-4 right-4 bottom-8 bg-[#101114] border border-white/10 rounded-[2.5rem] shadow-2xl shadow-black/40 flex flex-col overflow-hidden transform-gpu transition-[opacity,transform] duration-300 ease-out ${isMenuVisible ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 -translate-y-3 scale-95'}`}>
                         <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
                             <div className={`bg-white/8 p-1.5 rounded-2xl flex mb-8 text-[10px] font-black uppercase tracking-widest border border-white/10 shadow-inner transition-[opacity,transform] duration-300 ${isMenuVisible ? 'opacity-100 translate-y-0 delay-75' : 'opacity-0 -translate-y-2 delay-0'}`}>
-                                <Link href={monthlyBaseUrl} onClick={startNavigation} className={`flex-1 py-2.5 text-center rounded-xl transition-all ${pageMode === 'month' ? 'bg-white text-gray-950 shadow-sm' : 'text-white/45 hover:text-white'}`}>月間</Link>
-                                <Link href={allTimeUrl} onClick={startNavigation} className={`flex-1 py-2.5 text-center rounded-xl transition-all ${pageMode === 'open' ? 'bg-white text-gray-950 shadow-sm' : 'text-white/45 hover:text-white'}`}>累計</Link>
+                                <Link href={monthlyBaseUrl} onClick={startNavigation} className={`flex-1 py-2.5 text-center rounded-xl transition-all ${pageMode === 'month' ? 'bg-white text-gray-950 shadow-xs' : 'text-white/45 hover:text-white'}`}>月間</Link>
+                                <Link href={allTimeUrl} onClick={startNavigation} className={`flex-1 py-2.5 text-center rounded-xl transition-all ${pageMode === 'open' ? 'bg-white text-gray-950 shadow-xs' : 'text-white/45 hover:text-white'}`}>累計</Link>
                             </div>
 
                             <div className={`space-y-6 transition-[opacity,transform] duration-300 ${isMenuVisible ? 'opacity-100 translate-y-0 delay-100' : 'opacity-0 -translate-y-3 delay-0'}`}>
                                 {pageMode === 'month' && <MonthSelector currentYear={currentId} currentMonth={currentMonth} dark />}
 
                                 <nav className="space-y-8 pt-4 text-left">
-                                    <Link href={dashboardBasePath} onClick={startNavigation} className={`flex items-center gap-3 px-4 py-3 text-sm rounded-2xl font-black transition-all border shadow-sm ${isDashboard && !currentChannelId ? 'bg-white text-gray-950 border-white shadow-black/20' : 'bg-transparent text-white/65 border-transparent hover:bg-white/8 hover:text-white'}`}>
+                                    <Link href={dashboardBasePath} onClick={startNavigation} className={`flex items-center gap-3 px-4 py-3 text-sm rounded-2xl font-black transition-all border shadow-xs ${isDashboard && !currentChannelId ? 'bg-white text-gray-950 border-white shadow-black/20' : 'bg-transparent text-white/65 border-transparent hover:bg-white/8 hover:text-white'}`}>
                                         <LayoutGrid className="w-4 h-4" /> 総合
                                     </Link>
                                     {categories.map(cat => (

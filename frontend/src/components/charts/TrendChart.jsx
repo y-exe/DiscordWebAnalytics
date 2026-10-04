@@ -17,7 +17,7 @@ const CustomTooltip = ({ active, payload, label, users, highlightUserId, focused
         if (focusData && !showList.some(p => String(p.dataKey) === String(focusedUserId))) showList.push(focusData);
 
         return (
-            <div className="bg-popover/95 backdrop-blur-md border border-border shadow-2xl rounded-xl p-4 min-w-[240px] z-[110] text-popover-foreground">
+            <div className="bg-popover/95 backdrop-blur-md border border-border shadow-2xl rounded-xl p-4 min-w-[240px] z-110 text-popover-foreground">
                 <p className="text-[10px] text-muted-foreground font-black mb-3 uppercase tracking-widest border-b border-border pb-2">{label}</p>
                 <div className="space-y-3">
                     {showList.map((p) => {
@@ -31,7 +31,7 @@ const CustomTooltip = ({ active, payload, label, users, highlightUserId, focused
                         return (
                             <div key={uid} className="flex items-center justify-between gap-4">
                                 <div className="flex items-center gap-2.5 overflow-hidden">
-                                    {avatar ? <img src={avatar} alt="" className="w-6 h-6 flex-shrink-0 rounded-full border border-border object-cover" referrerPolicy="no-referrer" /> : <div className="w-6 h-6 rounded-full bg-muted flex-shrink-0" style={{ border: `2px solid ${p.stroke || p.fill}` }}></div>}
+                                    {avatar ? <img src={avatar} alt="" className="w-6 h-6 shrink-0 rounded-full border border-border object-cover" referrerPolicy="no-referrer" /> : <div className="w-6 h-6 rounded-full bg-muted shrink-0" style={{ border: `2px solid ${p.stroke || p.fill}` }}></div>}
                                     <span className={`truncate text-xs font-bold ${isMe ? 'text-red-500' : isFocus ? 'text-blue-500' : 'text-foreground'}`}>{name}</span>
                                 </div>
                                 <span className="result-number font-black text-foreground text-sm">{p.value.toLocaleString()}</span>
@@ -213,7 +213,7 @@ export default function TrendChart({ apiData, highlightUserId, focusedUserId, on
     };
 
     return (
-        <Card className="w-full shadow-sm">
+        <Card className="w-full shadow-xs">
             <CardHeader className="pb-4">
                 <div className="flex flex-col md:flex-row md:items-start justify-between gap-6">
                     <div className="space-y-1">
@@ -237,15 +237,15 @@ export default function TrendChart({ apiData, highlightUserId, focusedUserId, on
                                     <input
                                         type="text"
                                         placeholder="ユーザーを追加..."
-                                        className="h-full w-full rounded-xl border-0 bg-white py-3 pl-11 pr-4 text-xs font-bold text-[#545454] outline-none transition-colors placeholder:text-[#545454]/55 focus:bg-white md:w-48"
+                                        className="h-full w-full rounded-xl border-0 bg-white py-3 pl-11 pr-4 text-xs font-bold text-[#545454] outline-hidden transition-colors placeholder:text-[#545454]/55 focus:bg-white md:w-48"
                                         value={searchTerm}
                                         onChange={(e) => setSearchTerm(e.target.value)}
                                     />
                                     {searchResults.length > 0 && (
-                                        <div className="absolute top-full right-0 z-[110] mt-2 w-64 overflow-hidden rounded-xl border-0 bg-white text-[#545454]">
+                                        <div className="absolute top-full right-0 z-110 mt-2 w-64 overflow-hidden rounded-xl border-0 bg-white text-[#545454]">
                                             {searchResults.map(u => (
                                                 <button key={u.user_id} onClick={() => handleSelectUser(u)} className="w-full flex items-center gap-3 p-3 hover:bg-[#f8f8f8] text-left border-b border-[#f1f1f1] last:border-0 transition-colors">
-                                                    {u.avatar ? <img src={u.avatar} alt="" className="w-8 h-8 flex-shrink-0 rounded-full object-cover" referrerPolicy="no-referrer" /> : <div className="w-8 h-8 rounded-full bg-muted flex flex-shrink-0 items-center justify-center"><User className="w-4 h-4 text-muted-foreground" /></div>}
+                                                    {u.avatar ? <img src={u.avatar} alt="" className="w-8 h-8 shrink-0 rounded-full object-cover" referrerPolicy="no-referrer" /> : <div className="w-8 h-8 rounded-full bg-muted flex shrink-0 items-center justify-center"><User className="w-4 h-4 text-muted-foreground" /></div>}
                                                     <div className="min-w-0 flex-1">
                                                         <p className="text-xs font-black text-foreground truncate">{u.display_name}</p>
                                                         <p className="text-[10px] text-muted-foreground font-mono truncate">@{u.username}</p>

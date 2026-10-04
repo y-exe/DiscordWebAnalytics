@@ -21,7 +21,7 @@ function StatItem({ icon: Icon, title, value, sub, colorClass = "text-[#111F35]"
 
     return (
         <div className={`flex h-full w-full min-w-0 items-start justify-start gap-3 p-3 text-left ${className}`}>
-            <div className={`flex-shrink-0 rounded-lg p-2 ${bgClass}`}>
+            <div className={`shrink-0 rounded-lg p-2 ${bgClass}`}>
                 <Icon className={`h-4 w-4 ${colorClass}`} />
             </div>
             <div className={`min-w-0 ${textAlignClass}`}>
@@ -36,7 +36,7 @@ function StatItem({ icon: Icon, title, value, sub, colorClass = "text-[#111F35]"
 function MobileStatItem({ icon: Icon, title, value, sub, colorClass = "text-[#111F35]", bgClass = "bg-[#111F35]/10" }) {
     return (
         <div className="flex min-w-0 items-start gap-2 rounded-xl bg-[#f8f8f8] p-3">
-            <div className={`flex-shrink-0 rounded-lg p-1.5 ${bgClass}`}>
+            <div className={`shrink-0 rounded-lg p-1.5 ${bgClass}`}>
                 <Icon className={`h-3.5 w-3.5 ${colorClass}`} />
             </div>
             <div className="min-w-0">
@@ -70,7 +70,7 @@ function Section({ title, data, iconSrc, isPersonal = false }) {
                         <div className="rounded-full bg-red-100 p-3">
                             <SearchX className="h-5 w-5 text-red-500" />
                         </div>
-                        <p className="text-base font-black leading-relaxed !text-[#111F35]" style={{ color: '#111F35' }}>
+                        <p className="text-base font-black leading-relaxed text-[#111F35]!" style={{ color: '#111F35' }}>
                             このチャンネルにあなたのデータは<br />
                             ありませんでした！！
                         </p>
@@ -82,7 +82,7 @@ function Section({ title, data, iconSrc, isPersonal = false }) {
                         <div className="rounded-full bg-red-100 p-3">
                             <SearchX className="h-5 w-5 text-red-500" />
                         </div>
-                        <p className="text-base font-black leading-relaxed !text-[#111F35]" style={{ color: '#111F35' }}>
+                        <p className="text-base font-black leading-relaxed text-[#111F35]!" style={{ color: '#111F35' }}>
                             このチャンネルにあなたのデータは<br />
                             ありませんでした！！
                         </p>
@@ -104,7 +104,7 @@ function Section({ title, data, iconSrc, isPersonal = false }) {
 
     return (
         <>
-        <div className="relative rounded-xl border-2 border-white !bg-white p-4 pt-8 sm:hidden">
+        <div className="relative rounded-xl border-2 border-white bg-white! p-4 pt-8 sm:hidden">
             {iconSrc && (
                 <img
                     src={iconSrc}
@@ -153,9 +153,9 @@ function Section({ title, data, iconSrc, isPersonal = false }) {
             </div>
         </div>
 
-        <div className="relative hidden h-full min-h-[180px] overflow-visible rounded-xl border-2 border-white !bg-white sm:block">
-            <div className="absolute bottom-4 left-1/2 top-4 z-[1] w-1.5 -translate-x-1/2 rounded-full bg-gray-300" />
-            <div className="absolute left-4 right-4 top-1/2 z-[1] h-1.5 -translate-y-1/2 rounded-full bg-gray-300" />
+        <div className="relative hidden h-full min-h-[180px] overflow-visible rounded-xl border-2 border-white bg-white! sm:block">
+            <div className="absolute bottom-4 left-1/2 top-4 z-1 w-1.5 -translate-x-1/2 rounded-full bg-gray-300" />
+            <div className="absolute left-4 right-4 top-1/2 z-1 h-1.5 -translate-y-1/2 rounded-full bg-gray-300" />
 
             {iconSrc && (
                 <img
@@ -224,7 +224,7 @@ function LoginRequiredSection({ title }) {
             <div className={`rounded-full bg-blue-100 ${compact ? 'p-2.5' : 'p-3'}`}>
                 <LogIn className={`${compact ? 'h-4 w-4' : 'h-5 w-5'} text-blue-500`} />
             </div>
-            <p className={`${compact ? 'text-sm leading-snug' : 'text-base leading-relaxed'} font-black !text-[#111F35]`} style={{ color: '#111F35' }}>
+            <p className={`${compact ? 'text-sm leading-snug' : 'text-base leading-relaxed'} font-black text-[#111F35]!`} style={{ color: '#111F35' }}>
                 あなたはログインしてないため<br />
                 個人分析を見れません！！
             </p>
@@ -254,7 +254,7 @@ function LoginRequiredSection({ title }) {
 
 export default function AnalysisPanel({ overall, personal, isPersonalAvailable, personalAvatar }) {
     return (
-        <Card className="grid min-h-[220px] grid-cols-1 gap-6 rounded-2xl !bg-[#f8f8f8] p-5 !shadow-none lg:grid-cols-2">
+        <Card className="grid min-h-[220px] grid-cols-1 gap-6 rounded-2xl bg-[#f8f8f8]! p-5 shadow-none! lg:grid-cols-2">
             <Section title={TEXT.all} data={overall} iconSrc="/ymkw.webp" />
             {isPersonalAvailable ? (
                 <Section title={TEXT.personal} data={personal} iconSrc={personalAvatar} isPersonal={true} />

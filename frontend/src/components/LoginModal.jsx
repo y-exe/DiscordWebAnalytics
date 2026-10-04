@@ -74,11 +74,11 @@ export default function LoginModal() {
     };
 
     return (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-100 flex items-center justify-center p-4">
             <div className="bg-card text-card-foreground rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-fade-in border border-border">
                 <div className="p-6 border-b border-border">
                     <div className="mb-5 flex items-center gap-3 text-left">
-                        <img src="/ranking.webp" alt="" className="h-14 w-14 flex-shrink-0 rounded-xl object-cover shadow-sm" />
+                        <img src="/ranking.webp" alt="" className="h-14 w-14 shrink-0 rounded-xl object-cover shadow-xs" />
                         <div className="min-w-0">
                             <p
                                 className="text-sm md:text-xl font-black text-foreground whitespace-nowrap"
@@ -105,7 +105,7 @@ export default function LoginModal() {
                         <input
                             type="text"
                             placeholder="ユーザー名で検索..."
-                            className="w-full pl-10 pr-4 py-2 bg-muted border border-input rounded-xl focus:ring-2 focus:ring-primary focus:outline-none transition-all placeholder:text-muted-foreground"
+                            className="w-full pl-10 pr-4 py-2 bg-muted border border-input rounded-xl focus:ring-2 focus:ring-primary focus:outline-hidden transition-all placeholder:text-muted-foreground"
                             value={query}
                             onChange={handleSearch}
                         />

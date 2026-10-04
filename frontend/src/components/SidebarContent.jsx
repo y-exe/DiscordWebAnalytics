@@ -50,14 +50,14 @@ export default function SidebarContent({ currentPath, queryParams, pageMode, cur
     return (
         <div className="px-6 pb-12 space-y-8 flex-1 overflow-y-auto custom-scrollbar flex flex-col">
             <div className="bg-muted p-1.5 rounded-2xl flex text-base tracking-normal border border-border shadow-inner result-number">
-                <Link href={monthlyBaseUrl} onClick={startNavigation} className={`flex-1 py-2.5 text-center rounded-xl transition-all ${pageMode === 'month' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>月間</Link>
-                <Link href={allTimeUrl} onClick={startNavigation} className={`flex-1 py-2.5 text-center rounded-xl transition-all ${pageMode === 'open' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>累計</Link>
+                <Link href={monthlyBaseUrl} onClick={startNavigation} className={`flex-1 py-2.5 text-center rounded-xl transition-all ${pageMode === 'month' ? 'bg-background text-foreground shadow-xs' : 'text-muted-foreground hover:text-foreground'}`}>月間</Link>
+                <Link href={allTimeUrl} onClick={startNavigation} className={`flex-1 py-2.5 text-center rounded-xl transition-all ${pageMode === 'open' ? 'bg-background text-foreground shadow-xs' : 'text-muted-foreground hover:text-foreground'}`}>累計</Link>
             </div>
 
             {pageMode === 'month' && <MonthSelector currentYear={currentId} currentMonth={currentMonth} />}
 
             <nav className="space-y-8">
-                <Link href={dashboardBasePath} onClick={startNavigation} className={`flex items-center gap-3 px-4 py-3 text-sm rounded-2xl font-black transition-all border shadow-sm ${isDashboard && !channelId ? 'bg-primary text-primary-foreground border-primary shadow-primary/20' : 'bg-transparent text-muted-foreground border-transparent hover:bg-muted hover:text-foreground'}`}>
+                <Link href={dashboardBasePath} onClick={startNavigation} className={`flex items-center gap-3 px-4 py-3 text-sm rounded-2xl font-black transition-all border shadow-xs ${isDashboard && !channelId ? 'bg-primary text-primary-foreground border-primary shadow-primary/20' : 'bg-transparent text-muted-foreground border-transparent hover:bg-muted hover:text-foreground'}`}>
                     <LayoutGrid className="w-4 h-4" /> 総合
                 </Link>
 

@@ -108,7 +108,7 @@ export default function AllTimeDashboard({ channelId: propChannelId, userId: pro
                 <ReportPeriodCard
                     title="All Time"
                     subTitle="累計レポート"
-                    className="fixed left-4 top-28 z-30 shadow-sm md:left-[22rem] md:top-20"
+                    className="fixed left-4 top-28 z-30 shadow-xs md:left-88 md:top-20"
                 />
                 <PageHeader
                     title="All Time"
@@ -139,7 +139,7 @@ export default function AllTimeDashboard({ channelId: propChannelId, userId: pro
                             />
                         </div>
 
-                        <Card className="grid grid-cols-1 gap-4 rounded-2xl !bg-[#f8f8f8] p-4 xl:grid-cols-3">
+                        <Card className="grid grid-cols-1 gap-4 rounded-2xl bg-[#f8f8f8]! p-4 xl:grid-cols-3">
                             <div className="xl:col-span-2 w-full min-w-0">
                                 <ActivityHeatmap data={data.heatmap} />
                             </div>
@@ -164,7 +164,7 @@ export default function AllTimeDashboard({ channelId: propChannelId, userId: pro
                         </Card>
                     </div>
 
-                    <div className="w-full lg:w-[320px] xl:w-[380px] flex-shrink-0">
+                    <div className="w-full lg:w-[320px] xl:w-[380px] shrink-0">
                         <div className="sticky top-20">
                             <RankingList data={data.ranking} highlightUserId={userId} />
                         </div>

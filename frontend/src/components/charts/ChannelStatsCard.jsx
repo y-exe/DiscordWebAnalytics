@@ -42,7 +42,7 @@ export default function ChannelStatsCard({ ranking, overall, prevOverall }) {
                     </div>
                 </div>
 
-                <div className="h-px bg-gradient-to-r from-transparent via-border to-transparent"></div>
+                <div className="h-px bg-linear-to-r from-transparent via-border to-transparent"></div>
 
                 <div className="space-y-4">
                     <div className="flex items-center justify-between">

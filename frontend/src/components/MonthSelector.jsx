@@ -29,7 +29,7 @@ export default function MonthSelector({ currentYear, currentMonth, dark = false 
 
   return (
     <div className="relative">
-      <button onClick={() => setIsOpen(!isOpen)} className={`w-full text-sm rounded-xl p-3 flex items-center justify-between transition-all shadow-sm focus:ring-2 focus:ring-ring outline-none ${dark ? 'bg-white/6 border border-white/10 text-white hover:border-white/25' : 'bg-background border border-border text-foreground hover:border-primary/50'}`}>
+      <button onClick={() => setIsOpen(!isOpen)} className={`w-full text-sm rounded-xl p-3 flex items-center justify-between transition-all shadow-xs focus:ring-2 focus:ring-ring outline-hidden ${dark ? 'bg-white/6 border border-white/10 text-white hover:border-white/25' : 'bg-background border border-border text-foreground hover:border-primary/50'}`}>
         <div className="flex items-center gap-2"><Calendar className={`w-4 h-4 ${dark ? 'text-white/45' : 'text-muted-foreground'}`} /><span className="font-medium">{currentLabel}</span></div>
         <ChevronDown className={`w-4 h-4 transition-transform ${dark ? 'text-white/45' : 'text-muted-foreground'} ${isOpen ? 'rotate-180' : ''}`} />
       </button>

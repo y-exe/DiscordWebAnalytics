@@ -27,12 +27,12 @@ export default function RankingList({ data, highlightUserId }) {
     };
 
     return (
-        <Card className="flex h-full flex-col overflow-hidden !border-[4px] !border-white/35 !bg-[#111F35] !text-white !shadow-none">
+        <Card className="flex h-full flex-col overflow-hidden border-4! border-white/35! bg-[#111F35]! text-white! shadow-none!">
             <div className="flex items-center gap-2 border-b-2 border-white/15 px-5 py-4">
                 <h3 className="text-base font-bold text-white">ランキング</h3>
             </div>
 
-            <div className="flex-shrink-0 border-b-2 border-white/15">
+            <div className="shrink-0 border-b-2 border-white/15">
                 {top1 && <TopRankRow user={top1} rank={1} isHighlight={String(top1.user_id) === String(highlightUserId)} />}
                 <div className="grid grid-cols-2 border-t-2 border-white/15">
                     {top2 && <TopRankRow user={top2} rank={2} isHighlight={String(top2.user_id) === String(highlightUserId)} compact />}
@@ -58,8 +58,8 @@ export default function RankingList({ data, highlightUserId }) {
             </div>
 
             {isModalOpen && createPortal(
-                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 animate-in fade-in" onClick={closeModal}>
-                    <Card className="w-full max-w-lg h-[80vh] flex flex-col overflow-hidden animate-in zoom-in-95 !border-[4px] !border-white/35 !bg-[#111F35] !text-white !shadow-none" onClick={e => e.stopPropagation()}>
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-9999 flex items-center justify-center p-4 animate-in fade-in" onClick={closeModal}>
+                    <Card className="w-full max-w-lg h-[80vh] flex flex-col overflow-hidden animate-in zoom-in-95 border-4! border-white/35! bg-[#111F35]! text-white! shadow-none!" onClick={e => e.stopPropagation()}>
                         <CardHeader className="p-4 border-b-2 border-white/15 flex flex-row items-center justify-between space-y-0">
                             <CardTitle className="text-lg text-white">ランキング一覧</CardTitle>
                             <button onClick={closeModal} className="p-2 hover:bg-white/10 rounded-full transition-colors"><X className="w-4 h-4 text-white/60" /></button>
@@ -79,7 +79,7 @@ export default function RankingList({ data, highlightUserId }) {
 
 function RankRow({ user, rank, isMe }) {
     return (
-        <div className={`flex items-center p-3 border-b-2 border-white/15 last:border-0 transition-colors hover:bg-white/[0.08] ${isMe ? 'bg-[#D02752]/20 hover:bg-[#D02752]/25' : ''}`}>
+        <div className={`flex items-center p-3 border-b-2 border-white/15 last:border-0 transition-colors hover:bg-white/8 ${isMe ? 'bg-[#D02752]/20 hover:bg-[#D02752]/25' : ''}`}>
             <span className={`result-number w-8 text-center font-bold text-sm ${rank <= 3 ? 'text-yellow-400' : 'text-white/45'}`}>{rank}</span>
             <Avatar className="w-8 h-8 mx-3">
                 <AvatarImage src={user.avatar} className="object-cover" />
@@ -129,7 +129,7 @@ function TopRankRow({ user, rank, isHighlight, compact = false }) {
     }
 
     return (
-        <div className={`relative flex min-h-[150px] flex-col items-center justify-between px-4 py-5 text-center transition-colors hover:bg-white/[0.06] ${rank === 2 ? 'border-r-2 border-white/15' : ''} ${isHighlight ? 'bg-[#D02752]/18' : 'bg-white/[0.025]'}`}>
+        <div className={`relative flex min-h-[150px] flex-col items-center justify-between px-4 py-5 text-center transition-colors hover:bg-white/6 ${rank === 2 ? 'border-r-2 border-white/15' : ''} ${isHighlight ? 'bg-[#D02752]/18' : 'bg-white/2.5'}`}>
             <div className={`result-number absolute right-3 top-3 text-xl font-black ${rankColor} opacity-90`}>
                 {rank}
             </div>
