@@ -84,7 +84,7 @@ export default function ActivityHeatmap({ data }) {
                     >
                       <div className={`
                         invisible group-hover:visible opacity-0 group-hover:opacity-100 transition-all duration-200 
-                        absolute pointer-events-none z-[100]
+                        absolute pointer-events-none z-100
                         ${isFirstRow ? 'top-full mt-3' : 'bottom-full mb-3'}
                         ${isLeftEdge ? 'left-0 translate-x-0' : isRightEdge ? 'right-0 translate-x-0' : 'left-1/2 -translate-x-1/2'}
                       `}>

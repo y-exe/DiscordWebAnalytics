@@ -14,7 +14,7 @@ export default function GrowthComparison({ current, previous }) {
     const previousPercent = (previous.total / (maxTotal || 1)) * 100;
 
     return (
-        <Card className="w-full border-border shadow-sm overflow-hidden">
+        <Card className="w-full border-border shadow-xs overflow-hidden">
             <CardHeader className="pb-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div className="space-y-1">

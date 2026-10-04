@@ -70,7 +70,7 @@ export default function AdminMonthGate({ year, month }) {
       <form onSubmit={login} className="bg-white p-10 rounded-[2.5rem] border border-gray-200 shadow-2xl max-w-sm w-full text-center space-y-4">
         <h1 className="text-2xl font-black text-gray-900">管理者エリア</h1>
         <p className="text-sm text-gray-500">{year}年{month}月のデータを見るには管理者パスワードが必要です。</p>
-        <input type="password" name="password" placeholder="パスワード" autoComplete="current-password" className="w-full px-5 py-4 bg-gray-50 border border-gray-200 rounded-2xl text-center font-bold outline-none focus:border-blue-500" required />
+        <input type="password" name="password" placeholder="パスワード" autoComplete="current-password" className="w-full px-5 py-4 bg-gray-50 border border-gray-200 rounded-2xl text-center font-bold outline-hidden focus:border-blue-500" required />
         {error && <p className="text-sm font-bold text-red-600" role="alert">{error}</p>}
         <button type="submit" className="w-full py-4 bg-gray-900 text-white font-bold rounded-2xl hover:bg-black">認証</button>
       </form>

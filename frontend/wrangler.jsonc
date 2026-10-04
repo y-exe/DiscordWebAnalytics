@@ -3,7 +3,9 @@
   "name": "ymkw-top",
   "main": ".open-next/worker.js",
   "compatibility_date": "2026-09-28",
-  "compatibility_flags": ["nodejs_compat"],
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
   "workers_dev": false,
   "assets": {
     "directory": ".open-next/assets",
@@ -17,5 +19,9 @@
   ],
   "observability": {
     "enabled": true
+  },
+  "previews": {},
+  "build": {
+    "command": "npm run cf:build"
   }
 }

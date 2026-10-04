@@ -8,7 +8,7 @@ export default function StatsCard({ myData, topUserCount }) {
   const percentage = topUserCount > 0 ? Math.round((myData.count / topUserCount) * 100) : 0;
 
   return (
-    <Card className="mb-6 overflow-hidden !border-0 !bg-[#f8f8f8] !shadow-none">
+    <Card className="mb-6 overflow-hidden border-0! bg-[#f8f8f8]! shadow-none!">
       <CardContent className="flex flex-col items-stretch justify-between gap-6 p-5 md:flex-row md:items-center md:p-6">
         <div className="flex w-full items-center gap-4 rounded-2xl bg-white px-5 py-4 md:w-auto md:min-w-[300px]">
           <Avatar className="h-14 w-14">

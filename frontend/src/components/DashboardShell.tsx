@@ -36,7 +36,7 @@ export default function DashboardShell({ children }: { children: React.ReactNode
 
       <div className="md:hidden"><MobileNavigation currentPath={currentPath} queryParams={queryParams} /></div>
       <div className="flex-1 min-w-0 md:ml-80 flex flex-col transition-all mobile-content-pt relative">
-        <header className="h-16 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b border-border hidden md:flex items-center justify-between px-8 sticky top-0 z-40">
+        <header className="h-16 bg-background/95 backdrop-blur-sm supports-backdrop-filter:bg-background/60 border-b border-border hidden md:flex items-center justify-between px-8 sticky top-0 z-40">
           <nav className="flex items-center gap-2 text-sm text-muted-foreground" aria-label="パンくず">
             <Link href="/" className="flex items-center gap-1.5 hover:text-foreground"><Home className="w-4 h-4" />ホーム</Link><span>/</span>
             <span>{isAll ? "総合" : "月別"}</span>

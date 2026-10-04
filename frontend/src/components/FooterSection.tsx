@@ -27,11 +27,11 @@ export default function FooterSection({ variant = "light" }: { variant?: "light"
 
         <div className={`flex flex-col items-center gap-8 border-t pt-7 text-center md:flex-row md:items-end md:justify-between md:text-left ${dark ? "border-white/20" : "border-border"}`}>
           <div>
-            <p className={`font-['Outfit',Arial,sans-serif] text-3xl font-bold tracking-[-0.05em] ${dark ? "text-white" : "text-foreground"}`}>ymkw.top</p>
+            <p className={`font-['Outfit',Arial,sans-serif] text-3xl font-bold tracking-tighter ${dark ? "text-white" : "text-foreground"}`}>ymkw.top</p>
             <p className={`mt-1 text-sm font-bold ${dark ? "text-white/60" : "text-muted-foreground"}`}>Copyright © 2026 YamakawaTeruki</p>
           </div>
           <nav className={`flex items-center gap-5 ${dark ? "text-white/65" : "text-muted-foreground"}`} aria-label="ソーシャルメディア">
-            {socialLinks.map(({ Icon, ...link }) => <a key={link.label} href={link.href} target="_blank" rel="noreferrer" aria-label={`${link.label}を開く`} className={`flex h-6 w-6 items-center justify-center transition-transform hover:scale-110 ${dark ? "hover:text-white focus-visible:outline-white" : "hover:text-foreground focus-visible:outline-foreground"} focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4`}><Icon className="h-5 w-5" aria-hidden="true" /></a>)}
+            {socialLinks.map(({ Icon, ...link }) => <a key={link.label} href={link.href} target="_blank" rel="noreferrer" aria-label={`${link.label}を開く`} className={`flex h-6 w-6 items-center justify-center transition-transform hover:scale-110 ${dark ? "hover:text-white focus-visible:outline-white" : "hover:text-foreground focus-visible:outline-foreground"} focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-4`}><Icon className="h-5 w-5" aria-hidden="true" /></a>)}
           </nav>
         </div>
       </div>
@@ -44,7 +44,7 @@ function FooterMenu({ title, links, dark }: { title: string; links: FooterLink[]
     <section className="text-center md:text-left">
       <h2 className={`mb-5 text-lg font-bold tracking-tight ${dark ? "text-white" : "text-foreground"}`}>{title}</h2>
       <ul className={`space-y-3 text-sm font-bold ${dark ? "text-white/60" : "text-muted-foreground"}`}>
-        {links.map((link) => <li key={link.text}><a className={`transition-colors ${dark ? "hover:text-white focus-visible:outline-white" : "hover:text-foreground focus-visible:outline-foreground"} focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2`} href={link.href}>{link.text}</a></li>)}
+        {links.map((link) => <li key={link.text}><a className={`transition-colors ${dark ? "hover:text-white focus-visible:outline-white" : "hover:text-foreground focus-visible:outline-foreground"} focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2`} href={link.href}>{link.text}</a></li>)}
       </ul>
     </section>
   );

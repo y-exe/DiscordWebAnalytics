@@ -17,7 +17,7 @@ export default function PageHeader({ title, subTitle, showPeriodCard = true }) {
     return (
         <div className="relative mb-2 pt-3 animate-in fade-in w-full text-center">
             <div className="mb-5 flex flex-col items-center gap-3">
-                <img src="/ranking.webp" alt="" className="h-20 w-20 rounded-2xl object-cover md:h-[5.5rem] md:w-[5.5rem]" />
+                <img src="/ranking.webp" alt="" className="h-20 w-20 rounded-2xl object-cover md:h-22 md:w-22" />
                 <p
                     className="text-3xl font-black italic text-foreground md:text-4xl"
                     style={{ fontFamily: '"Noto Sans JP", "Noto Sans Japanese", sans-serif', fontWeight: 900 }}
@@ -25,7 +25,7 @@ export default function PageHeader({ title, subTitle, showPeriodCard = true }) {
                     発言ランキングWeb
                 </p>
                 <p
-                    className="-mt-2 text-base font-bold !text-gray-500 md:text-lg"
+                    className="-mt-2 text-base font-bold text-gray-500! md:text-lg"
                     style={{ fontFamily: '"Noto Sans JP", "Noto Sans Japanese", sans-serif' }}
                 >
                     個人分析、過去のデータ、詳しいランキング等

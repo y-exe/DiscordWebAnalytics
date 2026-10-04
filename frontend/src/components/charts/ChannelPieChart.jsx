@@ -24,7 +24,7 @@ export default function ChannelPieChart({ data }) {
     if (active && payload && payload.length) {
       const d = payload[0].payload;
       return (
-        <div className="bg-popover border border-border p-2.5 rounded-xl shadow-2xl backdrop-blur-md z-[110]">
+        <div className="bg-popover border border-border p-2.5 rounded-xl shadow-2xl backdrop-blur-md z-110">
           <p className="text-[9px] font-black text-muted-foreground uppercase tracking-widest mb-1">{d.name}</p>
           <div className="flex items-baseline gap-1.5">
             <span className="text-xs font-black text-popover-foreground">{d.value.toLocaleString()}</span>
@@ -39,14 +39,14 @@ export default function ChannelPieChart({ data }) {
 
   return (
     <div className="rounded-2xl bg-white p-5 h-full flex flex-col overflow-hidden">
-      <div className="mb-3 w-full flex-shrink-0 pr-28">
+      <div className="mb-3 w-full shrink-0 pr-28">
         <h3 className="text-base font-bold text-foreground leading-none">チャンネル分布</h3>
       </div>
 
       <div className="flex-1 flex flex-row items-center gap-4 min-h-0 min-w-0">
         <div
           ref={containerRef}
-          className="h-full w-[50%] relative flex-shrink-0"
+          className="h-full w-[50%] relative shrink-0"
         >
           {shouldRender && (
             <div className="w-full h-full relative">
@@ -67,7 +67,7 @@ export default function ChannelPieChart({ data }) {
                         key={`cell-${index}`}
                         fill={COLORS[index % COLORS.length]}
                         stroke="none"
-                        className="hover:opacity-80 transition-opacity cursor-pointer outline-none"
+                        className="hover:opacity-80 transition-opacity cursor-pointer outline-hidden"
                       />
                     ))}
                   </Pie>
@@ -89,7 +89,7 @@ export default function ChannelPieChart({ data }) {
         <div className="flex-1 flex flex-col gap-0.5 justify-center min-w-0 pr-2 overflow-hidden h-full">
           {data.slice(0, 8).map((d, i) => (
             <div key={d.name} className="flex items-center gap-2 min-w-0 group cursor-default py-0.5">
-              <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: COLORS[i % COLORS.length] }}></div>
+              <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: COLORS[i % COLORS.length] }}></div>
               <div className="flex flex-col min-w-0 flex-1 leading-tight">
                 <span className="text-[8px] font-bold text-muted-foreground uppercase truncate tracking-tight group-hover:text-foreground transition-colors">{d.name}</span>
                 <span className="text-[7px] font-black text-muted-foreground/30">{((d.value / total) * 100).toFixed(0)}%</span>
