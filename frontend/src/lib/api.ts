@@ -27,7 +27,7 @@ export async function fetchAPI(
     const baseUrl = isServer ? SSR_API_URL : API_URL;
     const url = path.startsWith("http") ? path : `${baseUrl}${path}`;
     const headers: Record<string, string> = {
-        ...(isServer ? { Referer: "https://www.ymkw.top/" } : {}),
+        ...(isServer ? { Referer: "https://ymkw.top/" } : {}),
         ...((fetchOptions.headers as Record<string, string>) || {}),
     };
 

@@ -5,7 +5,7 @@ import "../styles/home.css";
 const description = "YoutuberのDiscord鯖であるやまかわてるき鯖の活動量、ランキング、統計情報を可視化する公認WEBダッシュボード。";
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://www.ymkw.top"),
+  metadataBase: new URL("https://ymkw.top"),
   title: { default: "やまかわてるき | ymkw.top", template: "%s | やまかわてるき | ymkw.top" },
   description,
   keywords: ["やまかわてるき", "Discord統計", "Discordランキング", "ymkw.top"],

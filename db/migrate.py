@@ -1,5 +1,3 @@
-"""Apply versioned PostgreSQL schema migrations from db/migrations."""
-
 import asyncio
 import hashlib
 import os
@@ -9,10 +7,8 @@ from urllib.parse import urlparse, urlunparse
 import asyncpg
 from dotenv import load_dotenv
 
-
 ROOT = Path(__file__).resolve().parents[1]
 MIGRATIONS_DIR = Path(__file__).resolve().parent / "migrations"
-
 
 def get_dsn() -> str:
     load_dotenv(ROOT / ".env")
@@ -31,7 +27,6 @@ def get_dsn() -> str:
         if parsed.hostname == "localhost":
             dsn = dsn.replace("localhost", "127.0.0.1")
     return dsn
-
 
 async def migrate() -> None:
     connection = await asyncpg.connect(get_dsn())
@@ -85,7 +80,6 @@ async def migrate() -> None:
             await connection.execute("SELECT pg_advisory_unlock(hashtext('ymkw-top-schema-migrations'))")
         finally:
             await connection.close()
-
 
 if __name__ == "__main__":
     asyncio.run(migrate())

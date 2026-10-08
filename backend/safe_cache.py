@@ -5,9 +5,7 @@ import threading
 import time
 from typing import Any, Optional
 
-
 class SafeDiskCache:
-    """Small process-safe SQLite cache that only serializes JSON values."""
 
     def __init__(self, directory: str, size_limit: int) -> None:
         os.makedirs(directory, mode=0o700, exist_ok=True)
@@ -34,6 +32,25 @@ class SafeDiskCache:
             connection.execute(
                 "CREATE INDEX IF NOT EXISTS idx_cache_accessed ON cache_entries (accessed_at)"
             )
+            connection.execute('CREATE TABLE IF NOT EXISTS rate_limits (key TEXT PRIMARY KEY, count INTEGER NOT NULL, expires_at REAL NOT NULL)')
+            connection.execute('CREATE INDEX IF NOT EXISTS idx_rate_expiry ON rate_limits (expires_at)')
+
+    def consume_limit(self, key: str, limit: int, window: int) -> bool:
+        if limit < 1 or window < 1:
+            return False
+        now = time.time()
+        with self._lock, self._connect() as connection:
+            connection.execute('BEGIN IMMEDIATE')
+            connection.execute('DELETE FROM rate_limits WHERE expires_at <= ?', (now,))
+            row = connection.execute('SELECT count, expires_at FROM rate_limits WHERE key = ?', (key,)).fetchone()
+            if row and row[0] >= limit:
+                return False
+            count, expiry = (row[0] + 1, row[1]) if row else (1, now + window)
+            connection.execute(
+                'INSERT INTO rate_limits VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET count=excluded.count, expires_at=excluded.expires_at',
+                (key, count, expiry),
+            )
+            return True
 
     def _connect(self) -> sqlite3.Connection:
         return sqlite3.connect(self.path, timeout=5)
