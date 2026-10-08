@@ -344,7 +344,7 @@ async def startup():
             DB_DSN,
             min_size=1,
             max_size=8,
-            ssl=False,
+            ssl="require",
             command_timeout=60,
             server_settings={"application_name": "ymkw-backend"},
         )
