@@ -6,6 +6,8 @@ on:
     paths:
       - 'backend/**'
       - 'Bot/**'
+      - 'db/**'
+      - 'scripts/**'
       - '.github/workflows/ghcr-publish.yml'
   workflow_dispatch:
 
@@ -13,7 +15,56 @@ env:
   REGISTRY: ghcr.io
 
 jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            Bot/package-lock.json
+            backend/package-lock.json
+            db/package-lock.json
+            scripts/package-lock.json
+
+      - name: Install Bot dependencies
+        run: npm ci
+        working-directory: Bot
+      - name: Typecheck Bot
+        run: npm run typecheck
+        working-directory: Bot
+
+      - name: Install backend dependencies
+        run: npm ci
+        working-directory: backend
+      - name: Typecheck backend
+        run: npm run typecheck
+        working-directory: backend
+      - name: Run backend security tests
+        run: npm test
+        working-directory: backend
+
+      - name: Install db dependencies
+        run: npm ci
+        working-directory: db
+      - name: Typecheck db
+        run: npm run typecheck
+        working-directory: db
+
+      - name: Install scripts dependencies
+        run: npm ci
+        working-directory: scripts
+      - name: Typecheck scripts
+        run: npm run typecheck
+        working-directory: scripts
+
   build-and-push-backend:
+    needs: verify
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -53,6 +104,7 @@ jobs:
           cache-to: type=gha,mode=max
 
   build-and-push-bot:
+    needs: verify
     runs-on: ubuntu-latest
     permissions:
       contents: read

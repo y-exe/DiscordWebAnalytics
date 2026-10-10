@@ -1,6 +1,0 @@
-fastapi==0.141.1
-uvicorn[standard]==0.53.0
-python-dotenv==1.2.3
-asyncpg==0.31.0
-pydantic==2.13.5
-tzdata==2026.4

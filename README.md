@@ -2,15 +2,16 @@
 <h1>
   Discord Server Web Analytics
   
-  [![discord.py](https://img.shields.io/badge/discord.py-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discordpy.readthedocs.io/)
-  [![Python](https://img.shields.io/badge/Python-yellow?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
-  [![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+  [![discord.js](https://img.shields.io/badge/discord.js-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.js.org/)
+  [![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+  [![Hono](https://img.shields.io/badge/Hono-FF5A00?style=flat-square&logo=hono&logoColor=white)](https://hono.dev/)
+  [![Node.js](https://img.shields.io/badge/Node.js-339933?style=flat-square&logo=nodedotjs&logoColor=white)](https://nodejs.org/)
   [![Next.js](https://img.shields.io/badge/Next.js-000000?style=flat-square&logo=nextdotjs&logoColor=white)](https://nextjs.org/)
   [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-316192?style=flat-square&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
   [![License GPL v3](https://img.shields.io/badge/LICENSE-GPL%20v3-green.svg?style=flat-square)](LICENSE)
 </h1>
 Discord鯖のアクティビティ収集、集計、可視化するための統合システムです。<br>
-Discord.pyによるデータ収集、FastAPIによるデータ提供、Next.js/ReactによるWebダッシュボードで構成<br>
+discord.jsによるデータ収集、Honoによるデータ提供、Next.js/ReactによるWebダッシュボードで構成<br>
 <br>
 
 <img src="public/dashboard.png" alt="dashboard">
@@ -41,9 +42,11 @@ Discordの今までのチャット履歴等を全て取得し、視覚化する�
 ## ディレクトリ構成
 
 ```
-- bot/ : データ収集およびコマンド操作を行うDiscordBot
-- backend/ : データベースと通信し、フロントエンドにJSONを提供するRESTAPI
+- Bot/ : データ収集およびコマンド操作を行うDiscordBot (discord.js + TypeScript)
+- backend/ : データベースと通信し、フロントエンドにJSONを提供するRESTAPI (Hono + TypeScript)
 - frontend/ : Webダッシュボード (Next.js App Router + React)
+- db/ : スキーママイグレーションランナー (TypeScript) とSQLファイル
+- scripts/ : 管理者パスワードハッシュ生成ツール
 ```
 
 ## 環境変数について
@@ -53,10 +56,10 @@ Discordの今までのチャット履歴等を全て取得し、視覚化する�
 - `ADMIN_PASSWORD_HASH`: ソルト付きPBKDF2-HMAC-SHA-256形式管理者パスハッシュ
 - `TRUST_CLOUDFLARE_PROXY`: originへの直接接続を遮断した場合に限り`true`
 - `CLOUDFLARE_TRUSTED_PROXY_CIDRS`: `CF-Connecting-IP`を信頼する接続元CIDRをカンマ区切りで設定
-Cloudflareがオリジンへ直接接続する構成では、[Cloudflare公式IP一覧](https://www.cloudflare.com/ips/)と同期してください。Cloudflare Tunnelや手前のリバースプロキシを使う場合は、FastAPIから見える直前のプロキシCIDRを指定
+Cloudflareがオリジンへ直接接続する構成では、[Cloudflare公式IP一覧](https://www.cloudflare.com/ips/)と同期してください。Cloudflare Tunnelや手前のリバースプロキシを使う場合は、APIサーバーから見える直前のプロキシCIDRを指定
 `ADMIN_PASSWORD_HASH`は次のコマンドで生成し、出力された1行全体をCloudflareの環境変数へ設定。
 ```bash
-python scripts/generate_admin_password_hash.py
+cd scripts && npm install && npm run generate:admin-password-hash
 ```
 
 ## フロントエンド開発・デプロイ
@@ -72,8 +75,7 @@ PostgreSQLのDDLは`db/migrations/`で管理します。BotやAPI、履歴スキ
 既存DBへの初回導入時も、初期マイグレーションは既存テーブル・インデックスを確認して不足分だけ作成し、既存データは変更しません。DB接続可能な環境で次を実行してください。
 
 ```bash
-python -m pip install -r backend/requirements.txt
-python db/migrate.py
+cd db && npm install && npm run migrate
 ```
 
 `DB_DSN`は環境変数、`Bot/.env`または`backend/.env`から読み込みます。スキーマを必要とするアプリを更新するときは、アプリのデプロイ前にマイグレーションを実行してください。適用済みのマイグレーションファイルは編集せず、新しい番号のSQLファイルを追加します。`CREATE INDEX CONCURRENTLY`などトランザクション外で実行するSQLは、ファイルの先頭に`-- migrate: no-transaction`を指定し、1ファイルにつき1ステートメントにします。
