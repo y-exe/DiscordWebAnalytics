@@ -6,6 +6,8 @@ on:
     paths:
       - 'backend/**'
       - 'Bot/**'
+      - 'db/**'
+      - 'scripts/**'
       - '.github/workflows/ghcr-publish.yml'
   workflow_dispatch:
 
@@ -13,7 +15,42 @@ env:
   REGISTRY: ghcr.io
 
 jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install & typecheck Bot
+        run: |
+          bun install --frozen-lockfile
+          bun run typecheck
+        working-directory: Bot
+
+      - name: Install, typecheck & test backend
+        run: |
+          bun install --frozen-lockfile
+          bun run typecheck
+          bun test
+        working-directory: backend
+
+      - name: Install & typecheck db
+        run: |
+          bun install --frozen-lockfile
+          bun run typecheck
+        working-directory: db
+
+      - name: Install & typecheck scripts
+        run: |
+          bun install --frozen-lockfile
+          bun run typecheck
+        working-directory: scripts
+
   build-and-push-backend:
+    needs: verify
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -53,6 +90,7 @@ jobs:
           cache-to: type=gha,mode=max
 
   build-and-push-bot:
+    needs: verify
     runs-on: ubuntu-latest
     permissions:
       contents: read

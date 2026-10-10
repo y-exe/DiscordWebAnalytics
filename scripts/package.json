@@ -1,0 +1,15 @@
+{
+  "name": "ymkw-scripts",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Discord Server Web Analytics - admin password hash generator",
+  "type": "module",
+  "scripts": {
+    "generate:admin-password-hash": "bun generateAdminPasswordHash.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "typescript": "^5.9.3"
+  }
+}
