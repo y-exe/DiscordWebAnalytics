@@ -61,7 +61,7 @@ function jsonError(status: number, message: string, headers?: Record<string, str
 }
 
 function plainTextResponse(text: string, headers?: Record<string, string>): Response {
-  const responseHeaders = new Headers()
+  const responseHeaders = new Headers({ 'Content-Type': 'text/plain; charset=utf-8' })
   if (headers) {
     for (const [key, value] of Object.entries(headers)) responseHeaders.set(key, value)
   }
