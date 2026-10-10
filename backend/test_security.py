@@ -114,13 +114,25 @@ class AdminSecurityTests(unittest.TestCase):
 
 
 class LoginLimitTests(unittest.IsolatedAsyncioTestCase):
-    async def test_startup_preserves_database_tls_configuration(self):
-        with patch.object(main.asyncpg, 'create_pool', new_callable=AsyncMock) as create_pool, \
+    async def test_startup_requires_database_tls(self):
+        dsn = "postgresql://user:password@postgres-db:5432/discord_logs"
+        with patch.object(main, 'DB_DSN', dsn), \
+             patch.object(main.asyncpg, 'create_pool', new_callable=AsyncMock) as create_pool, \
              patch.object(main, 'initialize_login_limits', new_callable=AsyncMock), \
              patch.object(main, 'warm_total_cache_loop', new_callable=AsyncMock):
             await main.startup()
-            self.assertNotIn('ssl', create_pool.call_args.kwargs)
-            self.assertEqual(create_pool.call_args.args[0], main.DB_DSN)
+            self.assertEqual(create_pool.call_args.kwargs.get('ssl'), 'require')
+            self.assertEqual(create_pool.call_args.args[0], dsn)
+
+    async def test_startup_keeps_loopback_database_connectable_without_tls(self):
+        dsn = "postgresql://user:password@127.0.0.1:5433/test"
+        with patch.object(main, 'DB_DSN', dsn), \
+             patch.object(main.asyncpg, 'create_pool', new_callable=AsyncMock) as create_pool, \
+             patch.object(main, 'initialize_login_limits', new_callable=AsyncMock), \
+             patch.object(main, 'warm_total_cache_loop', new_callable=AsyncMock):
+            await main.startup()
+            self.assertEqual(create_pool.call_args.kwargs.get('ssl'), 'prefer')
+            self.assertEqual(create_pool.call_args.args[0], dsn)
 
     async def asyncSetUp(self):
         self.directory = tempfile.TemporaryDirectory()

@@ -96,6 +96,14 @@ def adjust_db_dsn(dsn: str) -> str:
 
 DB_DSN = adjust_db_dsn(raw_dsn)
 
+# 本番PostgreSQLはpg_hbaのhostsslでTCP接続のTLSを必須とする。ローカル開発用の
+# PostgreSQLはTLS非対忓なので、loopback系ホストだけpreferにして接続を切らさない。
+LOCAL_DB_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "host.docker.internal"})
+
+def db_sslmode(dsn: str) -> str:
+    from urllib.parse import urlparse
+    return "prefer" if urlparse(dsn).hostname in LOCAL_DB_HOSTS else "require"
+
 ENABLE_API_DOCS = os.getenv('ENABLE_API_DOCS', 'false').lower() == 'true'
 app = FastAPI(docs_url='/docs' if ENABLE_API_DOCS else None,
               redoc_url='/redoc' if ENABLE_API_DOCS else None,
@@ -335,12 +343,14 @@ async def startup():
         from urllib.parse import urlparse
         parsed = urlparse(DB_DSN)
         safe_dsn = f"{parsed.scheme}://{parsed.username}:****@{parsed.hostname}:{parsed.port}{parsed.path}"
-        logger.info(f"Connecting to database at {safe_dsn}")
+        sslmode = db_sslmode(DB_DSN)
+        logger.info(f"Connecting to database at {safe_dsn} (sslmode={sslmode})")
         
         pool = await asyncpg.create_pool(
             DB_DSN,
             min_size=1,
             max_size=8,
+            ssl=sslmode,
             command_timeout=60,
             server_settings={"application_name": "ymkw-backend"},
         )
