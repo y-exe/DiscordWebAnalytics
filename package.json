@@ -1,0 +1,33 @@
+{
+  "name": "discord-web-analytics",
+  "private": true,
+  "packageManager": "bun@1.3.14",
+  "workspaces": [
+    "backend",
+    "Bot",
+    "db",
+    "scripts"
+  ],
+  "scripts": {
+    "dev": "turbo run dev frontend:dev",
+    "build": "turbo run frontend:build",
+    "typecheck": "turbo run typecheck frontend:typecheck",
+    "test": "turbo run test",
+    "lint": "biome lint .",
+    "lint:fix": "biome lint --write .",
+    "format": "biome format --write .",
+    "format:check": "biome format .",
+    "check": "bun run lint && bun run typecheck && bun run test",
+    "bootstrap": "bun install --frozen-lockfile && bun install --cwd frontend --frozen-lockfile",
+    "frontend:dev": "bun run --cwd frontend dev",
+    "frontend:build": "bun run --cwd frontend build:next",
+    "frontend:typecheck": "bun run --cwd frontend typecheck"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.15",
+    "turbo": "2.11.7"
+  },
+  "engines": {
+    "bun": ">=1.3.14"
+  }
+}

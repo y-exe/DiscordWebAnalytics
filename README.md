@@ -89,3 +89,24 @@ cd db && bun install && bun run migrate
 
 ---
 © 2026 ymkw.top
+
+## 開発ツール
+
+`bun run bootstrap` をリポジトリのルートで実行します。バックエンド群はルートのBunワークスペース、frontendは独立したパッケージとしてインストールし、Turborepoのルートタスクから操作します。ルートの `bun.lock` はバックエンド群の開発・CI用です。frontendの `bun.lock` はBun開発用、`package-lock.json` は独立したCloudflareのnpmビルド用です。他の子ディレクトリのロックファイルはDockerビルド用です。依存変更時は両方を更新してください。
+
+- `bun run lint`: Biomeで構文と初期導入の正確性ルールを検査。
+- `bun run format`: Biomeで整形。
+- `bun run format:check`: 整形差分を確認。既存コードの一括整形は行わず、編集時に適用します。
+- `bun run check`: Biome・型検査・テスト。
+- `bun run build`: Next.jsビルド。
+- `bun run dev`: 各devスクリプトを同時実行。常駐処理はキャッシュしません。
+- `bunx turbo run typecheck --filter=<package名>`: パッケージを指定して検査。
+
+Biomeは既存ESLintのReact専用ルールと併用します。初期ルールは実行上の誤りを対象とし、推奨ルール全体への拡張は別途行います。生成物・公開アセット・結果スナップショットは対象外です。CIではlintを必須とし、既存の整形差分はブロックしません。
+
+Next.jsはビルド時の環境変数や外部APIに依存するため、初期導入ではビルドキャッシュを無効にしています。Cloudflareのbuild/preview/deploy、DBマイグレーション、Botのbackfillはルートタスクに含めません。既存の子ディレクトリから明示的に実行してください。
+
+
+Next.jsのdev/build/startは `bun --bun next` でBunランタイムを明示します。OpenNextは `npm run build:cloudflare` でNode.js/webpackのNext.jsビルドを実行し、Cloudflareのビルド環境にBunランタイムを要求しません。Cloudflare上の実行環境はWorkersです。Bun 1.3.14を開発・CIで固定し、Node.jsもOpenNext/Wrangler互換用に用意します。速度改善率は環境依存のため、導入だけで数値を保証しません。
+
+Cloudflareではfrontendをビルドルートにして従来どおり `npm ci` を使えます。リポジトリ全体の開発・CIでは `bun run bootstrap` を使います。

@@ -3,13 +3,16 @@
   "type": "module",
   "version": "0.1.1",
   "scripts": {
-    "dev": "next dev --port 4321",
-    "build": "next build",
-    "start": "next start --port 4321",
+    "dev": "bun --bun next dev --port 4321",
+    "build": "bun --bun next build",
+    "start": "bun --bun next start --port 4321",
     "cf:build": "opennextjs-cloudflare build",
     "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
     "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
-    "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts"
+    "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts",
+    "build:next": "bun --bun next build",
+    "typecheck": "tsc --noEmit",
+    "build:cloudflare": "next build --webpack"
   },
   "dependencies": {
     "@radix-ui/react-avatar": "^1.1.11",
