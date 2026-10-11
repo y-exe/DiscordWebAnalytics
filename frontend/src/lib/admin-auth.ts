@@ -19,7 +19,7 @@ function bytesToBase64Url(bytes: Uint8Array): string {
   return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/u, "");
 }
 
-function base64UrlToBytes(value: string): Uint8Array {
+function base64UrlToBytes(value: string): Uint8Array<ArrayBuffer> {
   const padded = value.replaceAll("-", "+").replaceAll("_", "/") + "=".repeat((4 - (value.length % 4)) % 4);
   const binary = atob(padded);
   return Uint8Array.from(binary, (character) => character.charCodeAt(0));
@@ -37,7 +37,7 @@ function timingSafeEqual(left: string, right: string): boolean {
   return difference === 0;
 }
 
-function parsePasswordHash(value: string): { salt: Uint8Array; hash: Uint8Array } | null {
+function parsePasswordHash(value: string): { salt: Uint8Array<ArrayBuffer>; hash: Uint8Array<ArrayBuffer> } | null {
   const match = /^pbkdf2-sha256\$(\d+)\$([A-Za-z0-9_-]+)\$([A-Za-z0-9_-]+)$/u.exec(value);
   if (!match || Number(match[1]) !== PBKDF2_ITERATIONS) return null;
   try {
@@ -49,7 +49,7 @@ function parsePasswordHash(value: string): { salt: Uint8Array; hash: Uint8Array 
   }
 }
 
-async function derivePasswordHash(password: string, salt: Uint8Array): Promise<Uint8Array> {
+async function derivePasswordHash(password: string, salt: Uint8Array<ArrayBuffer>): Promise<Uint8Array> {
   const key = await crypto.subtle.importKey("raw", encoder.encode(password), "PBKDF2", false, ["deriveBits"]);
   const bits = await crypto.subtle.deriveBits(
     { name: "PBKDF2", hash: "SHA-256", salt, iterations: PBKDF2_ITERATIONS },

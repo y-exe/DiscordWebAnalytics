@@ -1,0 +1,26 @@
+{
+  "$schema": "https://turborepo.dev/schema.json",
+  "tasks": {
+    "dev": {
+      "cache": false,
+      "persistent": true,
+      "passThroughEnv": ["*"]
+    },
+    "build:next": {
+      "dependsOn": ["^build:next"],
+      "outputs": [".next/**", "!.next/cache/**"],
+      "cache": false,
+      "passThroughEnv": ["*"]
+    },
+    "typecheck": {
+      "outputs": [],
+      "inputs": ["$TURBO_DEFAULT$", "../biome.json"]
+    },
+    "test": {
+      "cache": false
+    },
+    "test:security": {
+      "cache": false
+    }
+  }
+}

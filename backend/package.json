@@ -7,7 +7,8 @@
   "scripts": {
     "start": "bun src/main.ts",
     "typecheck": "tsc --noEmit",
-    "test": "bun test"
+    "test": "bun test",
+    "dev": "bun --watch src/main.ts"
   },
   "dependencies": {
     "dotenv": "^18.0.7",
