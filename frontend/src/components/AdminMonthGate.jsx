@@ -41,8 +41,6 @@ export default function AdminMonthGate({ year, month }) {
   }, [targetMonth, targetYear]);
 
   useEffect(() => {
-    // 許可後は Dashboard 側の全データ取得完了を待つ。ここで閉じると、
-    // 月間画面だけローダーと実際のデータ取得がずれてしまう。
     if (state === "login") window.dispatchEvent(new Event("app-loaded"));
   }, [state]);
 

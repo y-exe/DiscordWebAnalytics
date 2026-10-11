@@ -1,0 +1,68 @@
+{
+  "$schema": "https://turborepo.dev/schema.json",
+  "tasks": {
+    "dev": {
+      "cache": false,
+      "persistent": true,
+      "passThroughEnv": [
+        "*"
+      ]
+    },
+    "typecheck": {
+      "outputs": [],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "../biome.json"
+      ]
+    },
+    "test": {
+      "cache": false
+    },
+    "test:security": {
+      "cache": false
+    },
+    "//#frontend:dev": {
+      "cache": false,
+      "persistent": true,
+      "passThroughEnv": [
+        "*"
+      ]
+    },
+    "//#frontend:build": {
+      "cache": false,
+      "outputs": [
+        "frontend/.next/**",
+        "!frontend/.next/cache/**"
+      ],
+      "inputs": [
+        "frontend/src/**",
+        "frontend/public/**",
+        "frontend/*.json",
+        "frontend/*.ts",
+        "frontend/*.mjs",
+        "frontend/*.cjs",
+        "frontend/*.js",
+        "frontend/bun.lock",
+        "frontend/.npmrc"
+      ],
+      "passThroughEnv": [
+        "*"
+      ]
+    },
+    "//#frontend:typecheck": {
+      "outputs": [],
+      "inputs": [
+        "frontend/src/**",
+        "frontend/public/**",
+        "frontend/*.json",
+        "frontend/*.ts",
+        "frontend/*.mjs",
+        "frontend/*.cjs",
+        "frontend/*.js",
+        "frontend/bun.lock",
+        "frontend/.npmrc",
+        "biome.json"
+      ]
+    }
+  }
+}

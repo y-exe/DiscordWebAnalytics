@@ -83,9 +83,27 @@ cd db && bun install && bun run migrate
 
 `db/diagnostics.sql`は一時ファイル書き出し量、`pg_stat_statements`のクエリ統計、テーブルとインデックスのサイズを確認します。クエリ統計を使うには、PostgreSQLの起動設定で`pg_stat_statements`を事前ロードして再起動した後、マイグレーションを実行します。診断SQLの実行自体は読み取り専用です。
 
+## 開発ツール
+
+Bun 1.3.14、Biome、Turborepoを使用します。
+
+```bash
+bun run bootstrap
+bun run dev
+```
+
+| コマンド | 内容 |
+|---|---|
+| `bun run check` | lint・型検査・テスト |
+| `bun run build` | フロントエンドのビルド |
+| `bun run format` | コード整形 |
+| `bun run format:check` | 整形差分の確認 |
+
+依存変更時は、Bunとnpm/Docker用のロックファイルを更新してください。
+
 ## ライセンス
 
-[GPL-3.0](LICENSE)  
+[GPL-3.0](LICENSE)
 
 ---
 © 2026 ymkw.top

@@ -19,3 +19,6 @@ backend/test_db.py
 build_log.txt
 
 db/backups/*.sql
+
+**/.turbo/
+**/*.tsbuildinfo
