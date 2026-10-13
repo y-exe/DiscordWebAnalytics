@@ -4,7 +4,7 @@
 
 @custom-variant dark (&:is(.dark *));
 
-@theme {
+@theme inline {
   --font-sans: 'Google Sans', 'Outfit', 'Noto Sans JP', sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
 
