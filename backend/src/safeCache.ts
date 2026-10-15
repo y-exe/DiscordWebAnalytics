@@ -48,7 +48,7 @@ export class SafeDiskCache {
         return false
       }
       const nextCount = row ? row.count + 1 : 1
-      const expiry = row ? row.expires_at : now + window
+      const expiry = row ? row.expires_at : now + window * 1000
       this.db
         .prepare(
           `INSERT INTO rate_limits VALUES (?, ?, ?)
@@ -89,7 +89,7 @@ export class SafeDiskCache {
     const encoded = JSON.stringify(value) ?? 'null'
     const encodedSize = Buffer.byteLength(encoded, 'utf8')
     const now = this.now()
-    const expiresAt = expire !== undefined ? now + expire : null
+    const expiresAt = expire !== undefined ? now + expire * 1000 : null
 
     this.db
       .prepare('DELETE FROM cache_entries WHERE expires_at IS NOT NULL AND expires_at <= ?')

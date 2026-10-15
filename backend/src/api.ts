@@ -293,7 +293,12 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
       })
     }
 
-    const clientIp = getPeerIp(c)
+    const clientIp = getClientIp(
+      getPeerIp(c),
+      c.req.header('CF-Connecting-IP'),
+      cfg.trustCloudflareProxy,
+      cfg.cloudflareTrustedProxyCidrs,
+    )
 
     const blockKey = `blocked:${clientIp}`
     if (cache.get(blockKey)) {

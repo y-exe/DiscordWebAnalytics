@@ -124,9 +124,47 @@ test('レート制限ウィンドウは期限切れでリセットされ、不�
   assert.equal(store.consumeLimit('login', 1, 600), true)
   assert.equal(store.consumeLimit('login', 1, 600), false)
   assert.equal(store.consumeLimit('invalid', 0, 600), false)
-  fakeNow = 1600
+  fakeNow += 599_999
+  assert.equal(store.consumeLimit('login', 1, 600), false)
+  fakeNow += 1
   assert.equal(store.consumeLimit('login', 1, 600), true)
   await cleanupDirectory(directory, store)
+})
+
+test('累計キャッシュは指定した秒数だけ保持され、期限で失効する', async () => {
+  const directory = tempDirectory()
+  let fakeNow = 1_000_000
+  const store = new SafeDiskCache(directory, 1024 * 1024, () => fakeNow)
+  try {
+    const analysis = { total: 3217708 }
+    store.set('analysis_total', analysis, 1800)
+    fakeNow += 10_000
+    assert.deepEqual(store.get('analysis_total'), analysis)
+    fakeNow += 1_789_999
+    assert.deepEqual(store.get('analysis_total'), analysis)
+    fakeNow += 1
+    assert.equal(store.get('analysis_total'), undefined)
+  } finally {
+    await cleanupDirectory(directory, store)
+  }
+})
+
+test('API制限は信頼プロキシ配下でも利用者ごとに分離し、未信頼のIPヘッダーは採用しない', async () => {
+  const cfg = await config.loadConfig()
+  cfg.maxRequests = 1
+  cfg.trustCloudflareProxy = true
+  cfg.cloudflareTrustedProxyCidrs = config.parseTrustedProxyCidrs('192.0.2.0/24')
+  for (const peerIp of ['192.0.2.7', '203.0.113.7']) {
+    const { app, cleanup } = await buildTestApp({ config: cfg, getPeerIp: () => peerIp })
+    try {
+      const request = (ip: string) => app.request('/health', { headers: { 'CF-Connecting-IP': ip } })
+      assert.equal((await request('198.51.100.1')).status, 200)
+      assert.equal((await request('198.51.100.1')).status, 429)
+      assert.equal((await request('198.51.100.2')).status, peerIp === '192.0.2.7' ? 200 : 429)
+    } finally {
+      await cleanup()
+    }
+  }
 })
 
 test('DSN書き換えは認証情報とクエリを保持する', async () => {
