@@ -3,8 +3,9 @@ import { getCookie } from 'hono/cookie'
 import { Hono } from 'hono'
 import type { Context } from 'hono'
 import type { Pool } from 'pg'
-import { buildRankingComponent, monthlyRankingTitle, serializeComponentEmbed, type RankingRow } from '../../shared/discord-ranking'
+import { buildAllTimeRankingComponent, buildRankingComponent, monthlyRankingTitle, serializeComponentEmbed, type RankingRow } from '../../shared/discord-ranking'
 import { monthlyRankingQuery } from '../../shared/monthly-ranking'
+import { totalRankingQuery } from '../../shared/total-ranking'
 import {
   ADMIN_COOKIE_NAME,
   ADMIN_LOGIN_LIMIT,
@@ -589,6 +590,22 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
     const res = formatRankingResponse(rows)
     cache.set(ckey, res, 600)
     return jsonResponse(res, 200, headers)
+  })
+
+  app.get('/ranking/total/discord-embed', async () => {
+    if (!/^\d+$/.test(cfg.guildId)) return jsonError(503, 'Report guild is not configured.')
+    const ckey = `discord_total_${cfg.guildId}`
+    const headers = { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': `public, max-age=${LIVE_TOTAL_CACHE_TTL}` }
+    const cached = cache.get(ckey)
+    if (typeof cached === 'string') return new Response(cached, { headers })
+    const pool = deps.getPool()
+    if (!pool) return jsonError(503, 'Service unavailable.')
+    const { rows } = await pool.query(totalRankingQuery(cfg.guildId))
+    if (!rows.length) return jsonError(404, 'No ranking data.')
+    const payload = serializeComponentEmbed(buildAllTimeRankingComponent(rows as RankingRow[]))
+    if (!payload) return jsonError(413, 'Component embed exceeds the 3000-byte limit.')
+    cache.set(ckey, payload, LIVE_TOTAL_CACHE_TTL)
+    return new Response(payload, { headers })
   })
 
   app.get('/ranking/total', async (c) => {

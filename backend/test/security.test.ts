@@ -186,6 +186,50 @@ test('巨大なプレビューや空のランキングは情報を削って偽�
   }
 })
 
+test('全期間のプレビューはBotと同じ全期間集計で取得し、月間データやロール案内を含まない', async () => {
+  const cfg = await config.loadConfig()
+  let calls = 0
+  const pool = { query: async (query: { text: string; values: unknown[] }) => {
+    calls++
+    assert.doesNotMatch(query.text, /created_at/)
+    assert.match(query.text, /m.guild_id = \$1 AND m.channel_id != \$2/)
+    assert.match(query.text, /LIMIT 10/)
+    assert.deepEqual(query.values, [cfg.guildId, '1406033558757314752'])
+    return { rows: [{ user_id: '123', count: 99999, display_name: '全期間1位' }] }
+  } } as unknown as Pool
+  const { app, cleanup } = await buildTestApp({ config: cfg, getPool: () => pool })
+  try {
+    for (let index = 0; index < 2; index++) {
+      const response = await app.request('/ranking/total/discord-embed')
+      assert.equal(response.status, 200)
+      assert.equal(response.headers.get('cache-control'), 'public, max-age=1800')
+      const payload = await response.text()
+      assert.ok(Buffer.byteLength(payload, 'utf8') <= 3000)
+      assert.match(payload, /🏆 全期間の発言ランキング/)
+      assert.match(payload, /99999回/)
+      assert.doesNotMatch(payload, /ロールが付与|年.*月の発言ランキング/)
+      assert.equal(JSON.parse(payload).component.type, 17)
+    }
+    assert.equal(calls, 1)
+  } finally {
+    await cleanup()
+  }
+})
+
+test('全期間プレビューも空データとサイズ超過では通常プレビューへ戻す', async () => {
+  for (const rows of [[], [{ user_id: '123', count: 1, display_name: '長い名前'.repeat(1000) }]]) {
+    const pool = { query: async () => ({ rows }) } as unknown as Pool
+    const { app, cleanup } = await buildTestApp({ getPool: () => pool })
+    try {
+      const response = await app.request('/ranking/total/discord-embed')
+      assert.equal(response.status, rows.length ? 413 : 404)
+      assert.equal((await response.json() as { component?: unknown }).component, undefined)
+    } finally {
+      await cleanup()
+    }
+  }
+})
+
 test('APIドキュメントはデフォルトで無効', async () => {
   const cfg = await config.loadConfig()
   assert.equal(cfg.enableApiDocs, false)

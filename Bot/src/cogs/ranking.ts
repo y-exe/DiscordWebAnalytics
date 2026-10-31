@@ -14,11 +14,9 @@ import {
 import type { Pool, PoolClient } from 'pg'
 import { ANNOUNCE_CHANNEL_ID, GUILD_ID, KING_ROLE_ID, OWNER_ID } from '../config'
 import { updateMonthlyRoleOnce } from '../monthlyRole'
-import { buildRankingComponent, monthlyRankingTitle, EXCLUDE_CHANNEL_ID, type RankingRow } from '../../../shared/discord-ranking'
+import { buildAllTimeRankingComponent, buildRankingComponent, monthlyRankingTitle, type RankingRow } from '../../../shared/discord-ranking'
 import { monthlyRankingQuery } from '../../../shared/monthly-ranking'
-
-const DELETED_USER_FILTER =
-  "(u.user_id IS NOT NULL AND u.username NOT ILIKE 'deleted%user' AND u.display_name NOT ILIKE 'deleted%user')"
+import { totalRankingQuery } from '../../../shared/total-ranking'
 
 const MONTH_SELECT_CUSTOM_ID = 'ranking_month_select'
 const OLD_RANKING_BUTTON_CUSTOM_ID = 'view_ranking_details'
@@ -165,39 +163,14 @@ async function handleAllCommand(
 ): Promise<void> {
   await interaction.deferReply()
 
-  const { rows } = await pool.query(
-    `
-    SELECT
-        m.user_id,
-        count(*) as count,
-        u.display_name,
-        u.username,
-        u.avatar_url as avatar
-    FROM messages m
-    LEFT JOIN users u ON m.user_id = u.user_id
-    WHERE m.is_bot = FALSE AND m.guild_id = $1 AND m.channel_id != ${EXCLUDE_CHANNEL_ID}
-      AND ${DELETED_USER_FILTER}
-    GROUP BY m.user_id, u.display_name, u.username, u.avatar_url
-    ORDER BY count DESC
-    LIMIT 100
-    `,
-    [GUILD_ID],
-  )
+  const { rows } = await pool.query(totalRankingQuery(GUILD_ID))
 
   if (rows.length === 0) {
     await interaction.followUp('データがありません')
     return
   }
 
-  const nowJst = jstYearMonth()
-  const container = buildRankingContainer(
-    '🏆 全期間の発言ランキング',
-    rows.slice(0, 10),
-    nowJst.year,
-    nowJst.month,
-    false,
-    'https://ymkw.top/all',
-  )
+  const container = new ContainerBuilder(buildAllTimeRankingComponent(rows as RankingRow[]))
 
   const channel = interaction.channel && 'send' in interaction.channel ? interaction.channel : null
   if (channel) {

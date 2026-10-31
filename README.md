@@ -73,6 +73,8 @@ Cloudflare Workers向けの成果物は`npm run cf:build`で生成し、`npm run
 
 Dockerイメージは共有ソースを含めるためリポジトリルートをコンテキストにしてビルドします（例: `docker build -f Bot/Dockerfile .`、`docker build -f backend/Dockerfile .`）。
 
+累計ランキング`/all`もComponent Embedに対応し、`/ranking/total/discord-embed`からBotの`/all`と同じ集計・描画処理で全期間の上位10人を表示します。月間ロールの案内は含めません。
+
 ## データベースのスキーマ変更
 
 月間の発言王ロールは日本時間の前月を対象に、Bot起動時と60秒ごとの確認で更新します。`KING_ROLE_ID`の既定値は`1503873180362739834`です。完了月は`monthly_role_runs`へ記録し、再起動時の重複実行を防ぎます。更新失敗時は完了扱いにせず再試行します。Botには対象ロールより上のロールと「ロールの管理」権限が必要です。月間レポートの共通入口`/month/latest`は、アクセス時の日本時間を基準に最新公開月へリダイレクトします。

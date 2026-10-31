@@ -1,6 +1,6 @@
 import { test } from 'bun:test'
 import assert from 'node:assert/strict'
-import { buildRankingComponent, monthlyRankingTitle, serializeComponentEmbed } from '../../shared/discord-ranking'
+import { buildAllTimeRankingComponent, buildRankingComponent, monthlyRankingTitle, serializeComponentEmbed } from '../../shared/discord-ranking'
 import { buildRankingContainer } from '../src/cogs/ranking'
 import originalMessage from './fixtures/monthly-ranking.json'
 
@@ -39,4 +39,16 @@ test('巨大な表示名でも順位や氏名を勝手に削らず、通常OGプ
   const component = buildRankingComponent('test', longRows, 2026, 10)
   assert.equal(serializeComponentEmbed(component), null)
   assert.equal(component.components.filter(child => child.type === 10 && child.content.includes('回**')).length, 10)
+})
+
+test('全期間プレビューは全期間のタイトル・累計上位10人を表示し、月間ロール案内を含まない', () => {
+  const component = buildAllTimeRankingComponent(rows)
+  const payload = serializeComponentEmbed(component)
+  assert.ok(payload)
+  assert.match(payload, /🏆 全期間の発言ランキング/)
+  assert.doesNotMatch(payload, /ロールが付与|1か月ごと|あけまして/)
+  assert.equal(component.components.filter(child => child.type === 10 && child.content.includes('回**')).length, 10)
+  const actions = component.components.find(child => child.type === 1)
+  assert.ok(actions?.type === 1)
+  assert.ok(actions.components.every(button => button.url === 'https://ymkw.top/all'))
 })

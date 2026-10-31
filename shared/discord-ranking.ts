@@ -71,6 +71,10 @@ export function monthlyRankingTitle(year: number, month: number): string {
   return `<:1_:1453233921310589059> ${year}年${month}月の発言ランキングはこちら！`
 }
 
+export function buildAllTimeRankingComponent(rows: RankingRow[]): RankingComponent {
+  return buildRankingComponent('🏆 全期間の発言ランキング', rows, 0, 0, false, 'https://ymkw.top/all')
+}
+
 export function serializeComponentEmbed(component: RankingComponent): string | null {
   const json = JSON.stringify({ component })
   // Do not silently drop ranks or truncate names to satisfy Discord's limit.
