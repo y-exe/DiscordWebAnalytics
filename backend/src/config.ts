@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 import dns from 'node:dns/promises'
 import dotenv from 'dotenv'
 import ipaddr from 'ipaddr.js'
-import { DEFAULT_KING_ROLE_ID } from '../../shared/discord-ranking'
+import { DEFAULT_GUILD_ID, DEFAULT_KING_ROLE_ID } from '../../shared/discord-ranking'
 
 export class ConfigError extends Error {}
 
@@ -266,7 +266,7 @@ export async function loadConfig(options: ConfigLoadOptions = {}): Promise<AppCo
   }
 
   return {
-    guildId: (localEnv.GUILD_ID || process.env.GUILD_ID || '').trim(),
+    guildId: (localEnv.GUILD_ID || process.env.GUILD_ID || '').trim() || DEFAULT_GUILD_ID,
     kingRoleId: (localEnv.KING_ROLE_ID || process.env.KING_ROLE_ID || DEFAULT_KING_ROLE_ID).trim(),
     dbDsn: await adjustDbDsn(rawDsn, options),
     apiSecret,

@@ -85,6 +85,34 @@ function loginRequest(body?: string): RequestInit {
   }
 }
 
+test('GUILD_ID未設定でも対象サーバーのDiscordプレビューを返し、明示設定も利用できる', async () => {
+  const original = process.env.GUILD_ID
+  try {
+    delete process.env.GUILD_ID
+    const cfg = await config.loadConfig()
+    assert.equal(cfg.guildId, '1355073968532619376')
+    let queriedGuild: unknown
+    const pool = { query: async (query: { values: unknown[] }) => {
+      queriedGuild = query.values[2]
+      return { rows: [{ user_id: '123', count: 100, display_name: 'テスト' }] }
+    } } as unknown as Pool
+    const { app, cleanup } = await buildTestApp({ config: cfg, getPool: () => pool })
+    try {
+      const response = await app.request('/ranking/monthly/2025/10/discord-embed')
+      assert.equal(response.status, 200)
+      assert.equal(queriedGuild, '1355073968532619376')
+      assert.equal((await response.json() as { component: { type: number } }).component.type, 17)
+    } finally {
+      await cleanup()
+    }
+    process.env.GUILD_ID = '987654321'
+    assert.equal((await config.loadConfig()).guildId, '987654321')
+  } finally {
+    if (original === undefined) delete process.env.GUILD_ID
+    else process.env.GUILD_ID = original
+  }
+})
+
 test('DiscordプレビューはBotと同じJST範囲・除外チャンネルで集計し、公開JSONをキャッシュする', async () => {
   const cfg = await config.loadConfig()
   cfg.guildId = '123456789'

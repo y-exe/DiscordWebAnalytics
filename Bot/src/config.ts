@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import dns from 'node:dns/promises'
 import dotenv from 'dotenv'
-import { DEFAULT_KING_ROLE_ID } from '../../shared/discord-ranking'
+import { DEFAULT_GUILD_ID, DEFAULT_KING_ROLE_ID } from '../../shared/discord-ranking'
 
 dotenv.config()
 
@@ -69,7 +69,7 @@ export async function adjustDbDsn(
   return dsn
 }
 
-export const GUILD_ID = process.env.GUILD_ID || '0'
+export const GUILD_ID = process.env.GUILD_ID?.trim() || DEFAULT_GUILD_ID
 export const OWNER_ID = process.env.OWNER_ID || '0'
 export const ADMIN_ROLE_ID = process.env.ADMIN_ROLE_ID || '0'
 export const KING_ROLE_ID = process.env.KING_ROLE_ID || DEFAULT_KING_ROLE_ID
