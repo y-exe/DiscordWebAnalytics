@@ -3,6 +3,8 @@ import { getCookie } from 'hono/cookie'
 import { Hono } from 'hono'
 import type { Context } from 'hono'
 import type { Pool } from 'pg'
+import { buildRankingComponent, monthlyRankingTitle, serializeComponentEmbed, type RankingRow } from '../../shared/discord-ranking'
+import { monthlyRankingQuery } from '../../shared/monthly-ranking'
 import {
   ADMIN_COOKIE_NAME,
   ADMIN_LOGIN_LIMIT,
@@ -514,6 +516,32 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
         avatar: row.avatar_url,
       })),
     )
+  })
+
+  app.get('/ranking/monthly/:year/:month/discord-embed', async (c) => {
+    const year = pathInt(c.req.param('year'))
+    const month = pathInt(c.req.param('month'))
+    if (year === null || month === null || year < 2020 || year > 2100 || month < 1 || month > 12) {
+      return jsonError(422, 'Invalid path parameter')
+    }
+    const access = requireMonthAccess(c, year, month)
+    if ('error' in access) return access.error
+    // プレビューは再配布されるため、認証済みでも未公開月は返さない。
+    if (access.isRestricted) return jsonError(403, "This month's report is not public yet.")
+    if (!/^\d+$/.test(cfg.guildId)) return jsonError(503, 'Report guild is not configured.')
+    const ckey = `discord_month_${cfg.guildId}_${cfg.kingRoleId}_${year}_${month}`
+    const headers = { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'public, max-age=600' }
+    const cached = cache.get(ckey)
+    if (typeof cached === 'string') return new Response(cached, { headers })
+    const pool = deps.getPool()
+    if (!pool) return jsonError(503, 'Service unavailable.')
+    const { rows } = await pool.query(monthlyRankingQuery(year, month, cfg.guildId))
+    if (!rows.length) return jsonError(404, 'No ranking data.')
+    const component = buildRankingComponent(monthlyRankingTitle(year, month), rows as RankingRow[], year, month, true, undefined, cfg.kingRoleId)
+    const payload = serializeComponentEmbed(component)
+    if (!payload) return jsonError(413, 'Component embed exceeds the 3000-byte limit.')
+    cache.set(ckey, payload, 600)
+    return new Response(payload, { headers })
   })
 
   app.get('/ranking/monthly/:year/:month', async (c) => {

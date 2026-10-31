@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url'
 import dns from 'node:dns/promises'
 import dotenv from 'dotenv'
 import ipaddr from 'ipaddr.js'
+import { DEFAULT_KING_ROLE_ID } from '../../shared/discord-ranking'
 
 export class ConfigError extends Error {}
 
@@ -55,6 +56,8 @@ const PRIVATE_CHAT_CATEGORY_IDS = [
 const BOTTOM_CHANNEL_CATEGORY_IDS = new Set(['1355760969187463378'])
 
 export interface AppConfig {
+  guildId: string
+  kingRoleId: string
   dbDsn: string
   apiSecret: string
   adminSessionSecret: string
@@ -263,6 +266,8 @@ export async function loadConfig(options: ConfigLoadOptions = {}): Promise<AppCo
   }
 
   return {
+    guildId: (localEnv.GUILD_ID || process.env.GUILD_ID || '').trim(),
+    kingRoleId: (localEnv.KING_ROLE_ID || process.env.KING_ROLE_ID || DEFAULT_KING_ROLE_ID).trim(),
     dbDsn: await adjustDbDsn(rawDsn, options),
     apiSecret,
     adminSessionSecret,

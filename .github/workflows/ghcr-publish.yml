@@ -5,6 +5,8 @@ on:
     branches: [ main ]
     paths:
       - 'backend/**'
+      - 'shared/**'
+      - '.dockerignore'
       - 'Bot/**'
       - 'db/**'
       - 'scripts/**'
@@ -68,7 +70,7 @@ jobs:
       - name: Build and push backend image
         uses: docker/build-push-action@v5
         with:
-          context: ./backend
+          context: .
           file: ./backend/Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
@@ -108,7 +110,7 @@ jobs:
       - name: Build and push bot image
         uses: docker/build-push-action@v5
         with:
-          context: ./Bot
+          context: .
           file: ./Bot/Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}

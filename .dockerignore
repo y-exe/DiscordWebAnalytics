@@ -1,0 +1,10 @@
+.git
+**/node_modules
+**/.env
+**/.env.*
+**/*.log
+**/.next
+**/.open-next
+**/.wrangler
+**/.turbo
+backups

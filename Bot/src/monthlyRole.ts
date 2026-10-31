@@ -1,4 +1,5 @@
 import type { Pool, PoolClient } from 'pg'
+export { monthlyBounds } from '../../shared/monthly-ranking'
 
 export function previousJstMonth(now = new Date()): { year: number; month: number } {
   const jst = new Date(now.getTime() + 9 * 60 * 60 * 1000)
@@ -6,13 +7,7 @@ export function previousJstMonth(now = new Date()): { year: number; month: numbe
   return { year: previous.getUTCFullYear(), month: previous.getUTCMonth() + 1 }
 }
 
-export function monthlyBounds(year: number, month: number): [Date, Date] {
-  const offset = 9 * 60 * 60 * 1000
-  return [new Date(Date.UTC(year, month - 1, 1) - offset), new Date(Date.UTC(year, month, 1) - offset)]
-}
-
-// The transaction lock also prevents overlap during rolling deployments.
-// Persist success only after Discord has confirmed every role change.
+// 再配備時の重複を防ぎ、Discordでの変更完了後にだけ成功を記録する。
 export async function updateMonthlyRoleOnce(
   pool: Pool,
   guildId: string,

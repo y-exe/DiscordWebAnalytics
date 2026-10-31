@@ -1,7 +1,5 @@
 import {
   ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
   type ChatInputCommandInteraction,
   type Client,
   type Guild,
@@ -9,21 +7,15 @@ import {
   DiscordAPIError,
   Events,
   MessageFlags,
-  type MessageActionRowComponentBuilder,
-  SeparatorBuilder,
   type SendableChannels,
   StringSelectMenuBuilder,
   StringSelectMenuOptionBuilder,
-  TextDisplayBuilder,
 } from 'discord.js'
 import type { Pool, PoolClient } from 'pg'
 import { ANNOUNCE_CHANNEL_ID, GUILD_ID, KING_ROLE_ID, OWNER_ID } from '../config'
-import { monthlyBounds, updateMonthlyRoleOnce } from '../monthlyRole'
-
-const EMOJI_FIRST = '<:first:1452959005625417790>'
-const EMOJI_SECOND = '<:second:1452958981969543168>'
-const EMOJI_THIRD = '<:third:1452958880379306024>'
-const EXCLUDE_CHANNEL_ID = '1406033558757314752'
+import { updateMonthlyRoleOnce } from '../monthlyRole'
+import { buildRankingComponent, monthlyRankingTitle, EXCLUDE_CHANNEL_ID, type RankingRow } from '../../../shared/discord-ranking'
+import { monthlyRankingQuery } from '../../../shared/monthly-ranking'
 
 const DELETED_USER_FILTER =
   "(u.user_id IS NOT NULL AND u.username NOT ILIKE 'deleted%user' AND u.display_name NOT ILIKE 'deleted%user')"
@@ -82,14 +74,7 @@ function buildMonthSelectRow(): ActionRowBuilder<StringSelectMenuBuilder> {
   return new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(menu)
 }
 
-interface RankingRow {
-  user_id: string
-  count?: string | number
-  msg_count?: string | number
-  display_name: string | null
-}
-
-function buildRankingContainer(
+export function buildRankingContainer(
   title: string,
   rows: RankingRow[],
   year: number,
@@ -97,76 +82,9 @@ function buildRankingContainer(
   showRoleReward = true,
   customUrl?: string,
 ): ContainerBuilder {
-  const container = new ContainerBuilder().setAccentColor(0x00ddff)
-
-  const textDisplay = (content: string) => new TextDisplayBuilder().setContent(content)
-
-  if (month === 12) {
-    container.addTextDisplayComponents(textDisplay('**🎍あけましておめでとうございます🎍**'))
-  }
-
-  container.addTextDisplayComponents(
-    textDisplay(`# ${title}`),
-    textDisplay(`-# <#${EXCLUDE_CHANNEL_ID}>はランキングに含まれません`),
-    textDisplay('-# <:4_:1453234089980334255> **プラチャ内の発言もカウントされます。**'),
+  return new ContainerBuilder(
+    buildRankingComponent(title, rows, year, month, showRoleReward, customUrl, KING_ROLE_ID),
   )
-
-  let topUserId: string | null = null
-  rows.forEach((row, index) => {
-    const userId = String(row.user_id)
-    const count = Number(row.count ?? row.msg_count ?? 0)
-    const userName = row.display_name || `<@${userId}>`
-
-    let rankStr: string
-    if (index === 0) {
-      topUserId = userId
-      rankStr = `## ${EMOJI_FIRST} **${userName}** (<@${userId}>) — **${count}回**`
-    } else if (index === 1) {
-      rankStr = `### ${EMOJI_SECOND} **${userName}** (<@${userId}>) — **${count}回**`
-    } else if (index === 2) {
-      rankStr = `### ${EMOJI_THIRD} **${userName}** (<@${userId}>) — **${count}回**`
-    } else {
-      rankStr = `**${index + 1}位** **${userName}** (<@${userId}>) — **${count}回**`
-    }
-
-    container.addTextDisplayComponents(textDisplay(rankStr))
-  })
-
-  container.addSeparatorComponents(new SeparatorBuilder())
-
-  if (showRoleReward && topUserId) {
-    container.addTextDisplayComponents(
-      textDisplay(
-        `**<:4_:1453234089980334255> 1位の <@${topUserId}> には <@&${KING_ROLE_ID}> ロールが付与されます**`,
-      ),
-      textDisplay('-# 1か月ごとに切り替わります'),
-    )
-    container.addSeparatorComponents(new SeparatorBuilder())
-  }
-
-  container.addTextDisplayComponents(
-    textDisplay('### <:2_:1453233982647959752> Web上でさらに詳しく見ることができます'),
-    textDisplay(
-      '-# **<a:6_:1455555980816285730> 個人分析・全体分析・グラフ分析・チャンネル比較 など**',
-    ),
-  )
-
-  const targetUrl = customUrl ?? `https://ymkw.top/month/${year}/${month}`
-  const actionRow = new ActionRowBuilder<MessageActionRowComponentBuilder>().addComponents(
-    new ButtonBuilder()
-      .setLabel('WEBで詳しく見る')
-      .setStyle(ButtonStyle.Link)
-      .setURL(targetUrl)
-      .setEmoji('<:3_:1453234036339245249>'),
-    new ButtonBuilder()
-      .setLabel('全期間のデータを見る')
-      .setStyle(ButtonStyle.Link)
-      .setURL('https://ymkw.top/all')
-      .setEmoji('<:3_:1453234036339245249>'),
-  )
-  container.addActionRowComponents(actionRow)
-
-  return container
 }
 
 async function sendContainer(channel: SendableChannels, container: ContainerBuilder): Promise<unknown> {
@@ -178,32 +96,23 @@ async function sendContainer(channel: SendableChannels, container: ContainerBuil
 }
 
 async function monthlyRanking(db: Pool | PoolClient, year: number, month: number): Promise<RankingRow[]> {
-  const [startDate, endDate] = monthlyBounds(year, month)
-  const { rows } = await db.query(
-    `SELECT m.user_id, count(*) AS count, u.display_name
-     FROM messages m LEFT JOIN users u ON m.user_id = u.user_id
-     WHERE m.created_at >= $1 AND m.created_at < $2
-       AND m.is_bot = FALSE AND m.guild_id = $3 AND m.channel_id != $4
-       AND ${DELETED_USER_FILTER}
-     GROUP BY m.user_id, u.display_name
-     ORDER BY count DESC, m.user_id ASC LIMIT 10`,
-    [startDate, endDate, GUILD_ID, EXCLUDE_CHANNEL_ID],
-  )
+  const { rows } = await db.query(monthlyRankingQuery(year, month, GUILD_ID))
   return rows as RankingRow[]
 }
 
 export async function assignWinnerRole(guild: Guild, winnerId: string): Promise<void> {
   const role = await guild.roles.fetch(KING_ROLE_ID)
   if (!role || !role.editable) throw new Error(`Role ${KING_ROLE_ID} is missing or not editable`)
-  // Resolve the winner and all holders before changing anything. Failures are retried.
   const members = await guild.members.fetch()
   const winner = await guild.members.fetch(winnerId)
+  const previousWinners = [...members.values()].filter(
+    member => member.id !== winnerId && member.roles.cache.has(role.id),
+  )
   if (!winner.roles.cache.has(role.id)) await winner.roles.add(role, '前月の発言ランキング1位')
-  for (const member of members.values()) {
-    if (member.id !== winnerId && member.roles.cache.has(role.id)) {
-      await member.roles.remove(role, '月間ランキングのロール更新')
-    }
+  for (const member of previousWinners) {
+    await member.roles.remove(role, '月間ランキングのロール更新')
   }
+  console.log(`Monthly role reconciled: role=${role.id} winner=${winnerId} removed=${previousWinners.map(member => member.id).join(',') || 'none'}`)
 }
 
 export async function runRankingLogic(
@@ -224,7 +133,7 @@ export async function runRankingLogic(
       return
     }
 
-    const title = `<:1_:1453233921310589059> ${year}年${month}月の発言ランキングはこちら！`
+    const title = monthlyRankingTitle(year, month)
     const container = buildRankingContainer(title, rows, year, month)
 
     let targetChannel: SendableChannels | null = channel ?? null
@@ -244,8 +153,6 @@ export async function runRankingLogic(
       await sendContainer(targetChannel, container)
     }
 
-    // Historical reports must not overwrite the current monthly winner's role.
-    // Role changes are handled exclusively by the persisted monthly job.
   } catch (error) {
     console.error(`Ranking Error: ${error}`)
   }

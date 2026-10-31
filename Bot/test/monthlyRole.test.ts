@@ -4,6 +4,54 @@ import type { Pool, PoolClient } from 'pg'
 import type { Guild } from 'discord.js'
 import { monthlyBounds, previousJstMonth, updateMonthlyRoleOnce } from '../src/monthlyRole'
 import { latestPublishedReportPath } from '../../frontend/src/lib/report-period'
+import { isPublishedReportMonth } from '../../frontend/src/lib/report-period'
+
+test('発言王ロールは複数の旧保持者から全て外し、連続受賞者のロールは維持する', async () => {
+  const { assignWinnerRole } = await import('../src/cogs/ranking')
+  const { KING_ROLE_ID } = await import('../src/config')
+  const removed: string[] = []
+  let granted = 0
+  const role = { id: KING_ROLE_ID, editable: true }
+  const member = (id: string, holdsRole: boolean) => ({ id, roles: {
+    cache: new Map(holdsRole ? [[KING_ROLE_ID, role]] : []),
+    add: async () => { granted++ },
+    remove: async () => { removed.push(id) },
+  } })
+  const winner = member('winner', true)
+  const members = new Map([
+    ['winner', winner], ['old-winner', member('old-winner', true)],
+    ['stale-holder', member('stale-holder', true)], ['other', member('other', false)],
+  ])
+  const guild = {
+    roles: { fetch: async () => role },
+    members: { fetch: async (id?: string) => id ? winner : members },
+  } as unknown as Guild
+  await assignWinnerRole(guild, 'winner')
+  assert.deepEqual(removed, ['old-winner', 'stale-holder'])
+  assert.equal(granted, 0)
+})
+
+test('旧受賞者のロール削除に失敗した場合、ジョブ全体を成功扱いしない', async () => {
+  const { assignWinnerRole } = await import('../src/cogs/ranking')
+  const { KING_ROLE_ID } = await import('../src/config')
+  const role = { id: KING_ROLE_ID, editable: true }
+  const old = { id: 'old', roles: {
+    cache: new Map([[KING_ROLE_ID, role]]),
+    remove: async () => { throw new Error('Removal failed') },
+  } }
+  const winner = { roles: { cache: new Map([[KING_ROLE_ID, role]]) } }
+  const guild = {
+    roles: { fetch: async () => role },
+    members: { fetch: async (id?: string) => id ? winner : new Map([['old', old]]) },
+  } as unknown as Guild
+  const { pool } = fakePool()
+  let attempts = 0
+  const update = async () => { attempts++; await assignWinnerRole(guild, 'winner'); return 'winner' }
+  const now = new Date('2026-11-01T00:00:00Z')
+  await assert.rejects(updateMonthlyRoleOnce(pool, 'guild', KING_ROLE_ID, update, now), /Removal failed/)
+  await assert.rejects(updateMonthlyRoleOnce(pool, 'guild', KING_ROLE_ID, update, now), /Removal failed/)
+  assert.equal(attempts, 2)
+})
 
 test('発言王ロールは先に新受賞者へ付け、失敗時は旧受賞者から外さない', async () => {
   const { assignWinnerRole } = await import('../src/cogs/ranking')
@@ -34,6 +82,9 @@ test('発言王ロールは先に新受賞者へ付け、失敗時は旧受賞�
 })
 
 test('JST月初と年初に、公開済みの前月へ切り替わる', () => {
+  assert.equal(isPublishedReportMonth(2026, 10, new Date('2026-10-31T14:59:59Z')), false)
+  assert.equal(isPublishedReportMonth(2026, 10, new Date('2026-10-31T15:00:00Z')), true)
+  assert.equal(isPublishedReportMonth(2026, 11, new Date('2026-10-31T15:00:00Z')), false)
   for (const [timestamp, year, month] of [
     ['2026-10-31T14:59:59Z', 2026, 9],
     ['2026-10-31T15:00:00Z', 2026, 10],

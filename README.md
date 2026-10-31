@@ -67,6 +67,12 @@ cd scripts && bun install && bun run generate:admin-password-hash
 Cloudflare Workers向けの成果物は`npm run cf:build`で生成し、`npm run preview`でWorkersランタイムを確認できます。実際の配備は`npm run deploy`です。
 環境変数は`NEXT_PUBLIC_API_URL`、`NEXT_PUBLIC_ADMIN_API_URL`、`GA_ID`を利用します。サーバー専用のAPI URLを分ける必要がある場合は`API_URL`を設定します。
 
+## Discordでの月間レポート共有
+
+月間レポートURLのHTMLは、公開済み月に限り`discord:component-embed`のリンクをサーバー側で出力します。`/ranking/monthly/{year}/{month}/discord-embed`はBotのランキングメッセージと同じ共通描画処理・集計条件を使用します。バックエンドにもBotと同じ`GUILD_ID`と`KING_ROLE_ID`を設定してください。未公開月のJSONは認証済みでも公開しません。Discordの3,000バイト制限を超える場合は順位・氏名を削らず、通常のOpen Graphプレビューへフォールバックします。
+
+Dockerイメージは共有ソースを含めるためリポジトリルートをコンテキストにしてビルドします（例: `docker build -f Bot/Dockerfile .`、`docker build -f backend/Dockerfile .`）。
+
 ## データベースのスキーマ変更
 
 月間の発言王ロールは日本時間の前月を対象に、Bot起動時と60秒ごとの確認で更新します。`KING_ROLE_ID`の既定値は`1503873180362739834`です。完了月は`monthly_role_runs`へ記録し、再起動時の重複実行を防ぎます。更新失敗時は完了扱いにせず再試行します。Botには対象ロールより上のロールと「ロールの管理」権限が必要です。月間レポートの共通入口`/month/latest`は、アクセス時の日本時間を基準に最新公開月へリダイレクトします。

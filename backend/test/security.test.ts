@@ -85,6 +85,79 @@ function loginRequest(body?: string): RequestInit {
   }
 }
 
+test('DiscordプレビューはBotと同じJST範囲・除外チャンネルで集計し、公開JSONをキャッシュする', async () => {
+  const cfg = await config.loadConfig()
+  cfg.guildId = '123456789'
+  const rows = Array.from({ length: 10 }, (_, index) => ({
+    user_id: String(100 + index), count: 100 - index, display_name: `利用者${index}`,
+  }))
+  let calls = 0
+  const pool = { query: async (query: { text: string; values: unknown[] }) => {
+    calls++
+    assert.match(query.text, /m.guild_id = \$3 AND m.channel_id != \$4/)
+    assert.match(query.text, /LIMIT 10/)
+    assert.deepEqual(query.values, [
+      new Date('2025-09-30T15:00:00Z'), new Date('2025-10-31T15:00:00Z'),
+      cfg.guildId, '1406033558757314752',
+    ])
+    return { rows }
+  } } as unknown as Pool
+  const { app, cleanup } = await buildTestApp({ config: cfg, getPool: () => pool })
+  try {
+    for (let index = 0; index < 2; index++) {
+      const response = await app.request('/ranking/monthly/2025/10/discord-embed')
+      assert.equal(response.status, 200)
+      assert.equal(response.headers.get('cache-control'), 'public, max-age=600')
+      assert.match(response.headers.get('content-type') ?? '', /application\/json/)
+      const body = await response.text()
+      assert.ok(Buffer.byteLength(body, 'utf8') <= 3000)
+      const payload = JSON.parse(body)
+      assert.deepEqual(Object.keys(payload), ['component'])
+      assert.equal(payload.component.type, 17)
+      assert.match(body, /2025年10月の発言ランキング/)
+      assert.match(body, /利用者9/)
+      assert.match(body, /1503873180362739834/)
+    }
+    assert.equal(calls, 1)
+  } finally {
+    await cleanup()
+  }
+})
+
+test('未公開月のプレビューは認証済みAPI利用者にも公開せず、DBへアクセスしない', async () => {
+  const cfg = await config.loadConfig()
+  cfg.guildId = '123456789'
+  const { app, cleanup } = await buildTestApp({ config: cfg, getPool: () => { throw new Error('Must not query') } })
+  const now = new Date(Date.now() + 9 * 60 * 60 * 1000)
+  try {
+    for (const headers of [{}, { 'x-api-key': cfg.apiSecret }] as Record<string, string>[]) {
+      const response = await app.request(`/ranking/monthly/${now.getUTCFullYear()}/${now.getUTCMonth() + 1}/discord-embed`, { headers })
+      assert.equal(response.status, 403)
+    }
+    for (const path of ['/ranking/monthly/2025/13/discord-embed', '/ranking/monthly/abc/1/discord-embed']) {
+      assert.equal((await app.request(path)).status, 422)
+    }
+  } finally {
+    await cleanup()
+  }
+})
+
+test('巨大なプレビューや空のランキングは情報を削って偽のランキングとして返さない', async () => {
+  const cfg = await config.loadConfig()
+  cfg.guildId = '123456789'
+  for (const rows of [[], [{ user_id: '123', count: 1, display_name: '非常に長い名前'.repeat(500) }]]) {
+    const pool = { query: async () => ({ rows }) } as unknown as Pool
+    const { app, cleanup } = await buildTestApp({ config: cfg, getPool: () => pool })
+    try {
+      const response = await app.request('/ranking/monthly/2025/10/discord-embed')
+      assert.equal(response.status, rows.length ? 413 : 404)
+      assert.equal((await response.json() as { component?: unknown }).component, undefined)
+    } finally {
+      await cleanup()
+    }
+  }
+})
+
 test('APIドキュメントはデフォルトで無効', async () => {
   const cfg = await config.loadConfig()
   assert.equal(cfg.enableApiDocs, false)
