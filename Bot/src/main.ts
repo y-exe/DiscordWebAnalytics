@@ -53,7 +53,7 @@ async function main(): Promise<void> {
   })
 
   loadLogger(client, pool)
-  loadRanking(client, pool)
+  const stopRanking = loadRanking(client, pool)
   loadSync(client, pool)
 
   client.on('error', (error) => {
@@ -79,6 +79,7 @@ async function main(): Promise<void> {
   const shutdown = async (signal: string): Promise<void> => {
     if (shuttingDown) return
     shuttingDown = true
+    stopRanking()
     console.log(`停止: ${signal} を受信`)
     try {
       await pool.end()

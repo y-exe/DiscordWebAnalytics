@@ -4,6 +4,7 @@ import {
   ButtonStyle,
   type ChatInputCommandInteraction,
   type Client,
+  type Guild,
   ContainerBuilder,
   DiscordAPIError,
   Events,
@@ -15,14 +16,14 @@ import {
   StringSelectMenuOptionBuilder,
   TextDisplayBuilder,
 } from 'discord.js'
-import type { Pool } from 'pg'
-import { ANNOUNCE_CHANNEL_ID, GUILD_ID, OWNER_ID } from '../config'
+import type { Pool, PoolClient } from 'pg'
+import { ANNOUNCE_CHANNEL_ID, GUILD_ID, KING_ROLE_ID, OWNER_ID } from '../config'
+import { monthlyBounds, updateMonthlyRoleOnce } from '../monthlyRole'
 
 const EMOJI_FIRST = '<:first:1452959005625417790>'
 const EMOJI_SECOND = '<:second:1452958981969543168>'
 const EMOJI_THIRD = '<:third:1452958880379306024>'
 const EXCLUDE_CHANNEL_ID = '1406033558757314752'
-const KING_ROLE_ID = '1452968848998531245'
 
 const DELETED_USER_FILTER =
   "(u.user_id IS NOT NULL AND u.username NOT ILIKE 'deleted%user' AND u.display_name NOT ILIKE 'deleted%user')"
@@ -136,7 +137,7 @@ function buildRankingContainer(
   if (showRoleReward && topUserId) {
     container.addTextDisplayComponents(
       textDisplay(
-        `**<:4_:1453234089980334255> 1位の <@${topUserId}> には <@&1452967299404271686> ロールが付与されます**`,
+        `**<:4_:1453234089980334255> 1位の <@${topUserId}> には <@&${KING_ROLE_ID}> ロールが付与されます**`,
       ),
       textDisplay('-# 1か月ごとに切り替わります'),
     )
@@ -176,6 +177,35 @@ async function sendContainer(channel: SendableChannels, container: ContainerBuil
   })
 }
 
+async function monthlyRanking(db: Pool | PoolClient, year: number, month: number): Promise<RankingRow[]> {
+  const [startDate, endDate] = monthlyBounds(year, month)
+  const { rows } = await db.query(
+    `SELECT m.user_id, count(*) AS count, u.display_name
+     FROM messages m LEFT JOIN users u ON m.user_id = u.user_id
+     WHERE m.created_at >= $1 AND m.created_at < $2
+       AND m.is_bot = FALSE AND m.guild_id = $3 AND m.channel_id != $4
+       AND ${DELETED_USER_FILTER}
+     GROUP BY m.user_id, u.display_name
+     ORDER BY count DESC, m.user_id ASC LIMIT 10`,
+    [startDate, endDate, GUILD_ID, EXCLUDE_CHANNEL_ID],
+  )
+  return rows as RankingRow[]
+}
+
+export async function assignWinnerRole(guild: Guild, winnerId: string): Promise<void> {
+  const role = await guild.roles.fetch(KING_ROLE_ID)
+  if (!role || !role.editable) throw new Error(`Role ${KING_ROLE_ID} is missing or not editable`)
+  // Resolve the winner and all holders before changing anything. Failures are retried.
+  const members = await guild.members.fetch()
+  const winner = await guild.members.fetch(winnerId)
+  if (!winner.roles.cache.has(role.id)) await winner.roles.add(role, '前月の発言ランキング1位')
+  for (const member of members.values()) {
+    if (member.id !== winnerId && member.roles.cache.has(role.id)) {
+      await member.roles.remove(role, '月間ランキングのロール更新')
+    }
+  }
+}
+
 export async function runRankingLogic(
   client: Client,
   pool: Pool,
@@ -184,24 +214,8 @@ export async function runRankingLogic(
   channel?: SendableChannels | null,
   isAuto = false,
 ): Promise<void> {
-  const startDate = new Date(Date.UTC(year, month - 1, 1))
-  const endDate = new Date(Date.UTC(year, month, 1) - 1000)
-
   try {
-    const { rows } = await pool.query(
-      `
-      SELECT m.user_id, count(*) as count, u.display_name
-      FROM messages m
-      LEFT JOIN users u ON m.user_id = u.user_id
-      WHERE m.created_at >= $1 AND m.created_at <= $2
-        AND m.is_bot = FALSE AND m.guild_id = $3 AND m.channel_id != ${EXCLUDE_CHANNEL_ID}
-        AND ${DELETED_USER_FILTER}
-      GROUP BY m.user_id, u.display_name
-      ORDER BY count DESC
-      LIMIT 10
-      `,
-      [startDate, endDate, GUILD_ID],
-    )
+    const rows = await monthlyRanking(pool, year, month)
 
     const guild = client.guilds.cache.get(GUILD_ID) ?? null
 
@@ -230,20 +244,8 @@ export async function runRankingLogic(
       await sendContainer(targetChannel, container)
     }
 
-    if (guild) {
-      const topUserId = String(rows[0].user_id)
-      await guild.members.fetch().catch(() => null)
-      const kingRole = guild.roles.cache.get(KING_ROLE_ID)
-      if (kingRole) {
-        for (const member of kingRole.members.values()) {
-          await member.roles.remove(kingRole).catch(() => {})
-        }
-        const newKing = guild.members.cache.get(topUserId)
-        if (newKing) {
-          await newKing.roles.add(kingRole).catch(() => {})
-        }
-      }
-    }
+    // Historical reports must not overwrite the current monthly winner's role.
+    // Role changes are handled exclusively by the persisted monthly job.
   } catch (error) {
     console.error(`Ranking Error: ${error}`)
   }
@@ -300,7 +302,33 @@ async function handleAllCommand(
   })
 }
 
-export function loadRanking(client: Client, pool: Pool): void {
+export function loadRanking(client: Client, pool: Pool): () => void {
+  let timer: ReturnType<typeof setInterval> | undefined
+  let running = false
+  let stopped = false
+  const checkMonthlyRole = async () => {
+    if (running || stopped) return
+    running = true
+    try {
+      await updateMonthlyRoleOnce(pool, GUILD_ID, KING_ROLE_ID, async (year, month, db) => {
+        const rows = await monthlyRanking(db, year, month)
+        if (!rows[0]) throw new Error(`No ranking data for ${year}-${month}`)
+        const guild = await client.guilds.fetch(GUILD_ID)
+        const winnerId = String(rows[0].user_id)
+        await assignWinnerRole(guild, winnerId)
+        return winnerId
+      })
+    } catch (error) {
+      console.error('Monthly role update failed; retrying in 60 seconds:', error)
+    } finally {
+      running = false
+    }
+  }
+  client.once(Events.ClientReady, () => {
+    if (stopped) return
+    void checkMonthlyRole()
+    timer = setInterval(() => void checkMonthlyRole(), 60_000)
+  })
   client.on(Events.InteractionCreate, async (interaction) => {
     try {
       if (interaction.isChatInputCommand()) {
@@ -360,5 +388,9 @@ export function loadRanking(client: Client, pool: Pool): void {
       console.error(`Ranking Error: ${error}`)
     }
   })
+  return () => {
+    stopped = true
+    if (timer) clearInterval(timer)
+  }
 }
 

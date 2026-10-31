@@ -18,7 +18,7 @@ export default function FooterSection({ variant = "light" }: { variant?: "light"
       <div className="mx-auto grid max-w-6xl gap-12">
         <div className="grid gap-10 md:grid-cols-[1fr_1fr_auto] md:items-start">
           <div className="grid grid-cols-2 gap-8">
-            <FooterMenu dark={dark} title="メニュー" links={[{ text: "ホーム", href: "/" }, { text: "月間レポート", href: "/month/2026/8" }, { text: "累計ランキング", href: "/all" }, { text: "第一回やまかわ編集大会", href: "https://event.ymkw.top" }]} />
+            <FooterMenu dark={dark} title="メニュー" links={[{ text: "ホーム", href: "/" }, { text: "月間レポート", href: "/month/latest" }, { text: "累計ランキング", href: "/all" }, { text: "第一回やまかわ編集大会", href: "https://event.ymkw.top" }]} />
             <FooterMenu dark={dark} title="サイトポリシー" links={[{ text: "プライバシー", href: "/privacy" }, { text: "規約", href: "/terms" }]} />
           </div>
           <div className="hidden md:block" />

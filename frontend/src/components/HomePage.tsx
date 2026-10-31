@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import RotatingYamakawa from "./RotatingYamakawa";
 
 function ReelLink({ href, label, event = false }: { href: string; label: string; event?: boolean }) {
@@ -12,7 +12,7 @@ function SocialReel({ label }: { label: string }) { return <span className="soci
 export default function HomePage() {
   const [closing, setClosing] = useState(false);
   const [showLoader, setShowLoader] = useState(true);
-  const reportUrl = useMemo(() => { const d = new Date(); d.setDate(0); return `/month/${d.getFullYear()}/${d.getMonth() + 1}`; }, []);
+  const reportUrl = "/month/latest";
   useEffect(() => {
     const importMap = document.createElement("script");
     importMap.type = "importmap";
