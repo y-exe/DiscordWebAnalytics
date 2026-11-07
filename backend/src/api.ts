@@ -1,11 +1,19 @@
-import { cors } from 'hono/cors'
-import { getCookie } from 'hono/cookie'
-import { Hono } from 'hono'
-import type { Context } from 'hono'
-import type { Pool } from 'pg'
-import { buildAllTimeRankingComponent, buildRankingComponent, monthlyRankingTitle, serializeComponentEmbed, type RankingRow } from '../../shared/discord-ranking'
-import { monthlyRankingQuery } from '../../shared/monthly-ranking'
-import { totalRankingQuery } from '../../shared/total-ranking'
+import { cors } from "hono/cors";
+import { getCookie } from "hono/cookie";
+import { Hono } from "hono";
+import type { Context } from "hono";
+import type { Pool } from "pg";
+import {
+  buildAllTimeRankingComponent,
+  buildRankingComponent,
+  monthlyRankingTitle,
+  rankingComponentNotes,
+  serializeComponentEmbed,
+  DEFAULT_KING_ROLE_ID,
+  type RankingRow,
+} from "../../shared/discord-ranking";
+import { monthlyRankingQuery } from "../../shared/monthly-ranking";
+import { totalRankingQuery } from "../../shared/total-ranking";
 import {
   ADMIN_COOKIE_NAME,
   ADMIN_LOGIN_LIMIT,
@@ -17,161 +25,163 @@ import {
   createAdminSession,
   isApiClient,
   verifyAdminSession,
-} from './adminAuth'
-import { getClientIp } from './config'
-import type { AppConfig } from './config'
+} from "./adminAuth";
+import { getClientIp } from "./config";
+import type { AppConfig } from "./config";
+import { dashboardBaseUrl, resolveGuildByHost, type GuildContext } from "./guilds";
 
-export const PUBLIC_PATHS = new Set(['/', '/health', '/docs', '/openapi.json', '/favicon.ico'])
-const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
-const DB_HEAVY_PREFIXES = ['/ranking', '/stats', '/users']
-const LIVE_TOTAL_CACHE_TTL = 1800
-export const TOTAL_CACHE_WARM_INTERVAL_MS = 600 * 1000
+export const PUBLIC_PATHS = new Set(["/", "/health", "/docs", "/openapi.json", "/favicon.ico"]);
+const WRITE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+const DB_HEAVY_PREFIXES = ["/ranking", "/stats", "/users"];
+const LIVE_TOTAL_CACHE_TTL = 1800;
+export const TOTAL_CACHE_WARM_INTERVAL_MS = 600 * 1000;
 
 const DELETED_USER_FILTER =
-  "(u.user_id IS NOT NULL AND u.username NOT ILIKE 'deleted%user' AND u.display_name NOT ILIKE 'deleted%user')"
+  "(u.user_id IS NOT NULL AND u.username NOT ILIKE 'deleted%user' AND u.display_name NOT ILIKE 'deleted%user')";
 
 export interface AppDeps {
-  config: AppConfig
+  config: AppConfig;
   cache: {
-    get(key: string): unknown
-    set(key: string, value: unknown, expire?: number): void
-    consumeLimit(key: string, limit: number, window: number): boolean
-  }
-  getPool: () => Pool | null
+    get(key: string): unknown;
+    set(key: string, value: unknown, expire?: number): void;
+    consumeLimit(key: string, limit: number, window: number): boolean;
+  };
+  getPool: () => Pool | null;
   consumeLoginLimits: (
     pool: Pool,
     clientKey: string,
     perClient: number,
     total: number,
     window: number,
-  ) => Promise<boolean>
-  verifyAdminPassword: (password: string, hash: string) => Promise<boolean>
-  getPeerIp?: (c: Context) => string
+  ) => Promise<boolean>;
+  verifyAdminPassword: (password: string, hash: string) => Promise<boolean>;
+  getPeerIp?: (c: Context) => string;
 }
 
-type AppEnv = { Bindings: { peerIp?: string } }
+type AppEnv = { Bindings: { peerIp?: string } };
 
 function jsonResponse(body: unknown, status = 200, headers?: Record<string, string>): Response {
-  const responseHeaders = new Headers({ 'Content-Type': 'application/json' })
+  const responseHeaders = new Headers({ "Content-Type": "application/json" });
   if (headers) {
-    for (const [key, value] of Object.entries(headers)) responseHeaders.set(key, value)
+    for (const [key, value] of Object.entries(headers)) responseHeaders.set(key, value);
   }
-  return new Response(JSON.stringify(body), { status, headers: responseHeaders })
+  return new Response(JSON.stringify(body), { status, headers: responseHeaders });
 }
 
 function jsonError(status: number, message: string, headers?: Record<string, string>): Response {
-  return jsonResponse({ detail: message }, status, headers)
+  return jsonResponse({ detail: message }, status, headers);
 }
 
 function plainTextResponse(text: string, headers?: Record<string, string>): Response {
-  const responseHeaders = new Headers({ 'Content-Type': 'text/plain; charset=utf-8' })
+  const responseHeaders = new Headers({ "Content-Type": "text/plain; charset=utf-8" });
   if (headers) {
-    for (const [key, value] of Object.entries(headers)) responseHeaders.set(key, value)
+    for (const [key, value] of Object.entries(headers)) responseHeaders.set(key, value);
   }
-  return new Response(text, { headers: responseHeaders })
+  return new Response(text, { headers: responseHeaders });
 }
 
 function noContent(headers?: Record<string, string>): Response {
-  const responseHeaders = new Headers()
+  const responseHeaders = new Headers();
   if (headers) {
-    for (const [key, value] of Object.entries(headers)) responseHeaders.set(key, value)
+    for (const [key, value] of Object.entries(headers)) responseHeaders.set(key, value);
   }
-  return new Response(null, { status: 204, headers: responseHeaders })
+  return new Response(null, { status: 204, headers: responseHeaders });
 }
 
 function defaultGetPeerIp(c: Context): string {
-  return (c.env as { peerIp?: string } | undefined)?.peerIp ?? 'unknown'
+  return (c.env as { peerIp?: string } | undefined)?.peerIp ?? "unknown";
 }
 
 async function readBodyCapped(request: Request, cap: number): Promise<Buffer | null> {
-  if (!request.body) return Buffer.alloc(0)
-  const reader = request.body.getReader()
-  const chunks: Buffer[] = []
-  let size = 0
+  if (!request.body) return Buffer.alloc(0);
+  const reader = request.body.getReader();
+  const chunks: Buffer[] = [];
+  let size = 0;
   while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-    size += value.byteLength
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
     if (size > cap) {
-      await reader.cancel().catch(() => {})
-      return null
+      await reader.cancel().catch(() => {});
+      return null;
     }
-    chunks.push(Buffer.from(value))
+    chunks.push(Buffer.from(value));
   }
-  return Buffer.concat(chunks)
+  return Buffer.concat(chunks);
 }
 
 function pathInt(raw: string): number | null {
-  if (!/^\d+$/.test(raw)) return null
-  const value = Number(raw)
-  return Number.isSafeInteger(value) ? value : null
+  if (!/^\d+$/.test(raw)) return null;
+  const value = Number(raw);
+  return Number.isSafeInteger(value) ? value : null;
 }
 
 function jstYearMonth(date = new Date()): { year: number; month: number } {
-  const formatted = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Tokyo',
-    year: 'numeric',
-    month: '2-digit',
-  }).format(date)
-  const [year, month] = formatted.split('-').map(Number)
-  return { year, month }
+  const formatted = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+  }).format(date);
+  const [year, month] = formatted.split("-").map(Number);
+  return { year, month };
 }
 
 interface RankingItem {
-  user_id: string
-  display_name: string
-  username: string
-  avatar: string | null
-  count: number
-  char_count: number
+  user_id: string;
+  display_name: string;
+  username: string;
+  avatar: string | null;
+  count: number;
+  char_count: number;
 }
 
 interface UserRankItem extends RankingItem {
-  rank: number
+  rank: number;
 }
 
 interface QueryRow {
-  [column: string]: unknown
+  [column: string]: unknown;
 }
 
 function formatRankingResponse(rows: QueryRow[]): RankingItem[] {
   return rows.map((row) => ({
     user_id: String(row.user_id),
-    display_name: (row.display_name as string) || 'Unknown',
-    username: (row.username as string) || 'unknown',
+    display_name: (row.display_name as string) || "Unknown",
+    username: (row.username as string) || "unknown",
     avatar: (row.avatar_url as string | null) ?? null,
     count: Number(row.c),
     char_count: Number(row.chars || 0),
-  }))
+  }));
 }
 
 function formatUserRankResponse(row: QueryRow | undefined): UserRankItem | null {
-  if (!row) return null
+  if (!row) return null;
   return {
     user_id: String(row.user_id),
-    display_name: (row.display_name as string) || 'Unknown',
-    username: (row.username as string) || 'unknown',
+    display_name: (row.display_name as string) || "Unknown",
+    username: (row.username as string) || "unknown",
     avatar: (row.avatar_url as string | null) ?? null,
     count: Number(row.c),
     char_count: Number(row.chars || 0),
     rank: Number(row.rank),
-  }
+  };
 }
 
 function escapeLike(value: string): string {
-  return value.replaceAll('\\', '\\\\').replaceAll('%', '\\%').replaceAll('_', '\\_')
+  return value.replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll("_", "\\_");
 }
 
 function monthBounds(year: number, month: number): Date[] | string {
-  if (year < 2020 || year > 2100) return 'year must be between 2020 and 2100'
-  if (month < 1 || month > 12) return 'month must be between 1 and 12'
-  const start = new Date(Date.UTC(year, month - 1, 1))
-  const end = month === 12 ? new Date(Date.UTC(year + 1, 0, 1)) : new Date(Date.UTC(year, month, 1))
-  return [start, end]
+  if (year < 2020 || year > 2100) return "year must be between 2020 and 2100";
+  if (month < 1 || month > 12) return "month must be between 1 and 12";
+  const start = new Date(Date.UTC(year, month - 1, 1));
+  const end =
+    month === 12 ? new Date(Date.UTC(year + 1, 0, 1)) : new Date(Date.UTC(year, month, 1));
+  return [start, end];
 }
 
 function isDbHeavyPath(path: string): boolean {
-  return DB_HEAVY_PREFIXES.some((prefix) => path.startsWith(prefix))
+  return DB_HEAVY_PREFIXES.some((prefix) => path.startsWith(prefix));
 }
 
 function addChannelScopeFilter(
@@ -181,61 +191,86 @@ function addChannelScopeFilter(
   channelIds: string[] | null,
 ): void {
   if (channelIds !== null) {
-    params.push(channelIds)
-    filters.push(`${column} = ANY($${params.length}::bigint[])`)
+    params.push(channelIds);
+    filters.push(`${column} = ANY($${params.length}::bigint[])`);
   }
 }
 
 function computeUserIdsKey(userIds: string[]): string {
-  return userIds.length === 0 ? 'None' : JSON.stringify(userIds)
+  return userIds.length === 0 ? "None" : JSON.stringify(userIds);
 }
 
 export function createApp(deps: AppDeps): Hono<AppEnv> {
-  const cfg = deps.config
-  const cache = deps.cache
-  const getPeerIp = deps.getPeerIp ?? defaultGetPeerIp
+  const cfg = deps.config;
+  const cache = deps.cache;
+  const getPeerIp = deps.getPeerIp ?? defaultGetPeerIp;
 
   async function getChannelScopeIds(
     pool: Pool,
+    guild: GuildContext,
     channelId: string | null,
   ): Promise<string[] | null | Response> {
-    if (!channelId) return null
-    if (channelId !== cfg.privateChatChannelId && !cfg.whitelistChannelIds.has(channelId)) {
-      return jsonError(404, 'Channel not found')
-    }
+    if (!channelId) return null;
+    const { whitelistChannelIds, privateChatChannelId, privateChatCategoryIds } =
+      guild.displayConfig;
+    const isPrivateChat = channelId === privateChatChannelId && privateChatCategoryIds.length > 0;
 
-    if (channelId === cfg.privateChatChannelId) {
+    if (isPrivateChat) {
       const { rows } = await pool.query(
         `
         SELECT channel_id
         FROM channels
-        WHERE is_active = TRUE
+        WHERE guild_id = $2 AND is_active = TRUE
           AND (
               (category_id IS NULL AND category_name = '未分類')
               OR (category_id IS NOT NULL AND NOT (category_id = ANY($1::bigint[])))
           )
         `,
-        [cfg.privateChatCategoryIds],
-      )
-      return rows.map((row) => String(row.channel_id))
+        [privateChatCategoryIds, guild.guildId],
+      );
+      return rows.map((row) => String(row.channel_id));
+    }
+
+    if (whitelistChannelIds.length > 0) {
+      if (!whitelistChannelIds.includes(channelId)) {
+        return jsonError(404, "Channel not found");
+      }
+    } else {
+      // ホワイトリスト未設定のギルドは自ギルドの全チャンネルを対象にする
+      const { rows } = await pool.query(
+        "SELECT 1 FROM channels WHERE channel_id = $1 AND guild_id = $2 LIMIT 1",
+        [channelId, guild.guildId],
+      );
+      if (rows.length === 0) return jsonError(404, "Channel not found");
     }
 
     const { rows: channelRows } = await pool.query(
-      'SELECT name FROM channels WHERE channel_id = $1',
-      [channelId],
-    )
-    if (channelRows.length === 0) return [channelId]
+      "SELECT name FROM channels WHERE channel_id = $1 AND guild_id = $2",
+      [channelId, guild.guildId],
+    );
+    if (channelRows.length === 0) return [channelId];
 
-    const childPrefix = `${escapeLike(channelRows[0].name as string)} / %`
+    const childPrefix = `${escapeLike(channelRows[0].name as string)} / %`;
     const { rows } = await pool.query(
       `
       SELECT channel_id
       FROM channels
-      WHERE channel_id = $1 OR name LIKE $2 ESCAPE '\\'
+      WHERE guild_id = $3 AND (channel_id = $1 OR name LIKE $2 ESCAPE '\\')
       `,
-      [channelId, childPrefix],
-    )
-    return rows.length > 0 ? rows.map((row) => String(row.channel_id)) : [channelId]
+      [channelId, childPrefix, guild.guildId],
+    );
+    return rows.length > 0 ? rows.map((row) => String(row.channel_id)) : [channelId];
+  }
+
+  /** Hostヘッダー (またはx-forwarded-host) からリクエスト対象ギルドを解決する */
+  async function requireGuild(c: Context): Promise<GuildContext | Response> {
+    const pool = deps.getPool();
+    if (!pool) return jsonError(503, "Service unavailable.");
+    // SSR (フロントエンドサーバー) はオリジンページのホストをx-forwarded-hostで伝える
+    const host = c.req.header("x-forwarded-host") ?? c.req.header("host");
+    const guild = await resolveGuildByHost(pool, cfg, host);
+    if (!guild) return jsonError(404, "Unknown guild host.");
+    return guild;
   }
 
   function requireMonthAccess(
@@ -243,161 +278,160 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
     year: number,
     month: number,
   ): { isRestricted: boolean } | { error: Response } {
-    const now = jstYearMonth()
-    const isRestricted =
-      year > now.year || (year === now.year && month >= now.month)
+    const now = jstYearMonth();
+    const isRestricted = year > now.year || (year === now.year && month >= now.month);
     if (
       isRestricted &&
-      !isApiClient(c.req.header('x-api-key'), cfg.apiSecret) &&
+      !isApiClient(c.req.header("x-api-key"), cfg.apiSecret) &&
       !verifyAdminSession(getCookie(c, ADMIN_COOKIE_NAME), cfg.adminSessionSecret)
     ) {
-      return { error: jsonError(403, "This month's report is not public yet.") }
+      return { error: jsonError(403, "This month's report is not public yet.") };
     }
-    return { isRestricted }
+    return { isRestricted };
   }
 
   const monthCacheControl = (isRestricted: boolean): Record<string, string> =>
     isRestricted
-      ? { 'Cache-Control': 'private, no-store' }
-      : { 'Cache-Control': 'public, max-age=600' }
+      ? { "Cache-Control": "private, no-store" }
+      : { "Cache-Control": "public, max-age=600" };
 
-  const app = new Hono<AppEnv>()
+  const app = new Hono<AppEnv>();
 
   app.use(
-    '*',
+    "*",
     cors({
       origin: cfg.allowedOrigins,
       credentials: true,
-      allowMethods: ['GET', 'POST', 'OPTIONS'],
-      allowHeaders: ['Accept', 'Content-Type'],
-      exposeHeaders: ['X-Debug-Block'],
+      allowMethods: ["GET", "POST", "OPTIONS"],
+      allowHeaders: ["Accept", "Content-Type"],
+      exposeHeaders: ["X-Debug-Block"],
     }),
-  )
+  );
 
-  app.use('*', async (c, next) => {
-    if (c.req.method === 'OPTIONS') {
-      await next()
-      return
+  app.use("*", async (c, next) => {
+    if (c.req.method === "OPTIONS") {
+      await next();
+      return;
     }
 
-    const isBot = isApiClient(c.req.header('x-api-key'), cfg.apiSecret)
-    const path = c.req.path
-    const isPublicPath = PUBLIC_PATHS.has(path)
+    const isBot = isApiClient(c.req.header("x-api-key"), cfg.apiSecret);
+    const path = c.req.path;
+    const isPublicPath = PUBLIC_PATHS.has(path);
 
     if (
       WRITE_METHODS.has(c.req.method) &&
       !isBot &&
       !isPublicPath &&
-      path !== '/admin/login' &&
-      path !== '/admin/logout'
+      path !== "/admin/login" &&
+      path !== "/admin/logout"
     ) {
-      return jsonResponse({ detail: 'API key required.' }, 401, {
-        'X-Debug-Block': 'write-api-key-required',
-      })
+      return jsonResponse({ detail: "API key required." }, 401, {
+        "X-Debug-Block": "write-api-key-required",
+      });
     }
 
     const clientIp = getClientIp(
       getPeerIp(c),
-      c.req.header('CF-Connecting-IP'),
+      c.req.header("CF-Connecting-IP"),
       cfg.trustCloudflareProxy,
       cfg.cloudflareTrustedProxyCidrs,
-    )
+    );
 
-    const blockKey = `blocked:${clientIp}`
+    const blockKey = `blocked:${clientIp}`;
     if (cache.get(blockKey)) {
-      return jsonResponse({ detail: 'Too Many Requests. Blocked for 10 minutes.' }, 429, {
-        'X-Debug-Block': 'rate-limit-active',
-      })
+      return jsonResponse({ detail: "Too Many Requests. Blocked for 10 minutes." }, 429, {
+        "X-Debug-Block": "rate-limit-active",
+      });
     }
 
-    const requestLimit = isBot ? cfg.botMaxRequests : cfg.maxRequests
+    const requestLimit = isBot ? cfg.botMaxRequests : cfg.maxRequests;
     if (!cache.consumeLimit(`request:${clientIp}`, requestLimit, cfg.rateLimitWindow)) {
-      cache.set(blockKey, true, cfg.blockDuration)
-      return jsonResponse({ detail: 'Too Many Requests. Blocked for 10 minutes.' }, 429, {
-        'X-Debug-Block': 'rate-limit-exceeded',
-      })
+      cache.set(blockKey, true, cfg.blockDuration);
+      return jsonResponse({ detail: "Too Many Requests. Blocked for 10 minutes." }, 429, {
+        "X-Debug-Block": "rate-limit-exceeded",
+      });
     }
 
     if (!isPublicPath && isDbHeavyPath(path)) {
-      const dbLimit = isBot ? cfg.dbBotMaxRequests : cfg.dbMaxRequests
+      const dbLimit = isBot ? cfg.dbBotMaxRequests : cfg.dbMaxRequests;
       if (!cache.consumeLimit(`db:${clientIp}`, dbLimit, cfg.dbRateLimitWindow)) {
-        cache.set(blockKey, true, cfg.blockDuration)
-        return jsonResponse({ detail: 'Too Many Requests. Blocked for 10 minutes.' }, 429, {
-          'X-Debug-Block': 'db-rate-limit-exceeded',
-        })
+        cache.set(blockKey, true, cfg.blockDuration);
+        return jsonResponse({ detail: "Too Many Requests. Blocked for 10 minutes." }, 429, {
+          "X-Debug-Block": "db-rate-limit-exceeded",
+        });
       }
     }
 
     try {
-      await next()
-      c.res.headers.set('X-Content-Type-Options', 'nosniff')
-      c.res.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin')
-      c.res.headers.set('X-Frame-Options', 'DENY')
-      return
+      await next();
+      c.res.headers.set("X-Content-Type-Options", "nosniff");
+      c.res.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+      c.res.headers.set("X-Frame-Options", "DENY");
+      return;
     } catch (error) {
-      console.error(`Unhandled exception during request: ${c.req.method} ${path}`, error)
+      console.error(`Unhandled exception during request: ${c.req.method} ${path}`, error);
       return jsonResponse(
         {
-          detail: 'Internal Server Error',
+          detail: "Internal Server Error",
           error_type: error instanceof Error ? error.constructor.name : typeof error,
         },
         500,
-        { 'X-Debug-Block': 'internal-error' },
-      )
+        { "X-Debug-Block": "internal-error" },
+      );
     }
-  })
+  });
 
   app.notFound((c) => {
-    return jsonResponse({ detail: 'Not Found' }, 404)
-  })
+    return jsonResponse({ detail: "Not Found" }, 404);
+  });
 
   app.onError((error, c) => {
-    console.error(`Unhandled error: ${c.req.method} ${c.req.path}`, error)
-    return jsonResponse({ detail: 'Internal Server Error' }, 500)
-  })
+    console.error(`Unhandled error: ${c.req.method} ${c.req.path}`, error);
+    return jsonResponse({ detail: "Internal Server Error" }, 500);
+  });
 
-  app.get('/', (c) => plainTextResponse('ymkw.top API by yexe'))
+  app.get("/", (c) => plainTextResponse("ymkw.top API by yexe"));
 
-  app.get('/health', (c) => plainTextResponse('ok'))
+  app.get("/health", (c) => plainTextResponse("ok"));
 
   if (cfg.enableApiDocs) {
-    app.get('/docs', (c) =>
-      plainTextResponse('API docs are enabled. See /openapi.json.', {
-        'Content-Type': 'text/html; charset=utf-8',
+    app.get("/docs", (c) =>
+      plainTextResponse("API docs are enabled. See /openapi.json.", {
+        "Content-Type": "text/html; charset=utf-8",
       }),
-    )
-    app.get('/redoc', (c) => plainTextResponse('API docs are enabled. See /openapi.json.'))
-    app.get('/openapi.json', (c) =>
+    );
+    app.get("/redoc", (c) => plainTextResponse("API docs are enabled. See /openapi.json."));
+    app.get("/openapi.json", (c) =>
       jsonResponse({
-        openapi: '3.1.0',
-        info: { title: 'ymkw.top API', version: '1.0.0' },
+        openapi: "3.1.0",
+        info: { title: "ymkw.top API", version: "1.0.0" },
         paths: {},
       }),
-    )
+    );
   }
 
-  app.get('/admin/session', (c) => {
-    if (!adminOriginAllowed(c.req.header('origin'), cfg.allowedOrigins)) {
-      return jsonError(403, 'Invalid origin.')
+  app.get("/admin/session", (c) => {
+    if (!adminOriginAllowed(c.req.header("origin"), cfg.allowedOrigins)) {
+      return jsonError(403, "Invalid origin.");
     }
     if (!verifyAdminSession(getCookie(c, ADMIN_COOKIE_NAME), cfg.adminSessionSecret)) {
-      return jsonError(401, 'Not authenticated.')
+      return jsonError(401, "Not authenticated.");
     }
-    return noContent({ 'Cache-Control': 'no-store' })
-  })
+    return noContent({ "Cache-Control": "no-store" });
+  });
 
-  app.post('/admin/login', async (c) => {
-    if (!adminOriginAllowed(c.req.header('origin'), cfg.allowedOrigins)) {
-      return jsonError(403, 'Invalid origin.')
+  app.post("/admin/login", async (c) => {
+    if (!adminOriginAllowed(c.req.header("origin"), cfg.allowedOrigins)) {
+      return jsonError(403, "Invalid origin.");
     }
-    const clientIp = getPeerIp(c)
-    const clientKey = adminClientKey(clientIp, cfg.adminSessionSecret)
-    const ipTag = clientKey.slice(0, 12)
-    const pool = deps.getPool()
+    const clientIp = getPeerIp(c);
+    const clientKey = adminClientKey(clientIp, cfg.adminSessionSecret);
+    const ipTag = clientKey.slice(0, 12);
+    const pool = deps.getPool();
     if (!pool) {
-      return jsonError(503, 'Login service unavailable.')
+      return jsonError(503, "Login service unavailable.");
     }
-    let allowed: boolean
+    let allowed: boolean;
     try {
       allowed = await deps.consumeLoginLimits(
         pool,
@@ -405,110 +439,131 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
         ADMIN_LOGIN_LIMIT,
         cfg.adminLoginGlobalLimit,
         ADMIN_LOGIN_WINDOW,
-      )
+      );
     } catch (error) {
-      console.error('admin_login outcome=limiter_unavailable', error)
-      return jsonError(503, 'Login service unavailable.')
+      console.error("admin_login outcome=limiter_unavailable", error);
+      return jsonError(503, "Login service unavailable.");
     }
     if (!allowed) {
-      console.warn(`admin_login outcome=rate_limited client=${ipTag}`)
-      return jsonError(429, 'Too many login attempts.', {
-        'Retry-After': String(ADMIN_LOGIN_WINDOW),
-      })
+      console.warn(`admin_login outcome=rate_limited client=${ipTag}`);
+      return jsonError(429, "Too many login attempts.", {
+        "Retry-After": String(ADMIN_LOGIN_WINDOW),
+      });
     }
 
-    const body = await readBodyCapped(c.req.raw, 2048)
+    const body = await readBodyCapped(c.req.raw, 2048);
     if (body === null) {
-      return jsonError(413, 'Request body too large.')
+      return jsonError(413, "Request body too large.");
     }
-    let password = ''
+    let password = "";
     try {
-      const payload: unknown = JSON.parse(body.toString('utf8'))
-      if (payload !== null && typeof payload === 'object' && !Array.isArray(payload)) {
-        const candidate = (payload as { password?: unknown }).password
-        if (typeof candidate === 'string') password = candidate
+      const payload: unknown = JSON.parse(body.toString("utf8"));
+      if (payload !== null && typeof payload === "object" && !Array.isArray(payload)) {
+        const candidate = (payload as { password?: unknown }).password;
+        if (typeof candidate === "string") password = candidate;
       }
     } catch {
-      return jsonError(400, 'Invalid request body.')
+      return jsonError(400, "Invalid request body.");
     }
 
     if (!(await deps.verifyAdminPassword(password, cfg.adminPasswordHash))) {
-      console.warn(`admin_login outcome=invalid_password client=${ipTag}`)
-      return jsonError(401, 'Invalid password.')
+      console.warn(`admin_login outcome=invalid_password client=${ipTag}`);
+      return jsonError(401, "Invalid password.");
     }
-    console.info(`admin_login outcome=success client=${ipTag}`)
+    console.info(`admin_login outcome=success client=${ipTag}`);
 
     return noContent({
-      'Cache-Control': 'no-store',
-      'Set-Cookie': adminSessionCookie(
+      "Cache-Control": "no-store",
+      "Set-Cookie": adminSessionCookie(
         createAdminSession(cfg.adminSessionSecret, Math.floor(Date.now() / 1000)),
       ),
-    })
-  })
+    });
+  });
 
-  app.post('/admin/logout', (c) => {
-    if (!adminOriginAllowed(c.req.header('origin'), cfg.allowedOrigins)) {
-      return jsonError(403, 'Invalid origin.')
+  app.post("/admin/logout", (c) => {
+    if (!adminOriginAllowed(c.req.header("origin"), cfg.allowedOrigins)) {
+      return jsonError(403, "Invalid origin.");
     }
     return noContent({
-      'Cache-Control': 'no-store',
-      'Set-Cookie': adminSessionCookieDeletion(),
-    })
-  })
+      "Cache-Control": "no-store",
+      "Set-Cookie": adminSessionCookieDeletion(),
+    });
+  });
 
-  app.get('/channels', async (c) => {
-    const headers = { 'Cache-Control': 'public, max-age=3600' }
-    const ckey = 'channels_list'
-    const cached = cache.get(ckey)
-    if (cached !== undefined && cached !== null) return jsonResponse(cached, 200, headers)
+  app.get("/channels", async (c) => {
+    const guildOrError = await requireGuild(c);
+    if (guildOrError instanceof Response) return guildOrError;
+    const guild = guildOrError;
 
-    const pool = deps.getPool()
-    if (!pool) return jsonError(503, 'Service unavailable.')
+    const headers = { "Cache-Control": "public, max-age=3600" };
+    const ckey = `channels_list_${guild.guildId}`;
+    const cached = cache.get(ckey);
+    if (cached !== undefined && cached !== null) return jsonResponse(cached, 200, headers);
+
+    const pool = deps.getPool();
+    if (!pool) return jsonError(503, "Service unavailable.");
     const { rows } = await pool.query(
-      'SELECT * FROM channels WHERE is_active = TRUE ORDER BY position ASC',
-    )
+      "SELECT * FROM channels WHERE is_active = TRUE AND guild_id = $1 ORDER BY position ASC",
+      [guild.guildId],
+    );
 
-    const visibleRows = rows.filter((row) =>
-      cfg.whitelistChannelIds.has(String(row.channel_id)),
-    )
+    const { whitelistChannelIds, bottomChannelCategoryIds } = guild.displayConfig;
+    const whitelist = new Set(whitelistChannelIds);
+    const bottomCategories = new Set(bottomChannelCategoryIds);
+    // ホワイトリスト未設定のギルドは全チャンネルを表示する
+    const visibleRows =
+      whitelist.size > 0 ? rows.filter((row) => whitelist.has(String(row.channel_id))) : rows;
     visibleRows.sort((a, b) => {
-      const aBottom = a.category_id !== null && cfg.bottomChannelCategoryIds.has(String(a.category_id))
-      const bBottom = b.category_id !== null && cfg.bottomChannelCategoryIds.has(String(b.category_id))
-      if (aBottom !== bBottom) return aBottom ? 1 : -1
-      return (Number(a.position) || 999999) - (Number(b.position) || 999999)
-    })
+      const aBottom = a.category_id !== null && bottomCategories.has(String(a.category_id));
+      const bBottom = b.category_id !== null && bottomCategories.has(String(b.category_id));
+      if (aBottom !== bBottom) return aBottom ? 1 : -1;
+      return (Number(a.position) || 999999) - (Number(b.position) || 999999);
+    });
 
     const res = [
-      {
-        id: cfg.privateChatChannelId,
-        name: 'プラチャ総合',
-        category: 'プラチャ',
-      },
+      ...(guild.displayConfig.privateChatCategoryIds.length > 0
+        ? [
+            {
+              id: guild.displayConfig.privateChatChannelId,
+              name: "プラチャ総合",
+              category: "プラチャ",
+            },
+          ]
+        : []),
       ...visibleRows.map((row) => ({
         id: String(row.channel_id),
         name: row.name as string,
-        category: (row.category_name as string) || '未分類',
+        category: (row.category_name as string) || "未分類",
       })),
-    ]
+    ];
 
-    cache.set(ckey, res, 3600)
-    return jsonResponse(res, 200, headers)
-  })
+    cache.set(ckey, res, 3600);
+    return jsonResponse(res, 200, headers);
+  });
 
-  app.get('/users/search', async (c) => {
-    const q = c.req.query('q')
+  app.get("/users/search", async (c) => {
+    const q = c.req.query("q");
     if (q === undefined || q.length < 1 || q.length > 64) {
-      return jsonError(422, 'Query validation failed: q must be 1-64 characters')
+      return jsonError(422, "Query validation failed: q must be 1-64 characters");
     }
-    const searchQuery = q.trim()
-    if (!searchQuery) return jsonResponse([])
+    const searchQuery = q.trim();
+    if (!searchQuery) return jsonResponse([]);
 
-    const pool = deps.getPool()
-    if (!pool) return jsonError(503, 'Service unavailable.')
+    const pool = deps.getPool();
+    if (!pool) return jsonError(503, "Service unavailable.");
+    const guildOrError = await requireGuild(c);
+    if (guildOrError instanceof Response) return guildOrError;
     const { rows } = await pool.query(
-      `SELECT user_id, display_name, username, avatar_url FROM users u WHERE (display_name ILIKE $1 OR username ILIKE $1) AND ${DELETED_USER_FILTER} LIMIT 10`,
-      [`%${searchQuery}%`],
-    )
+      `SELECT gm.user_id, gm.display_name, u.username, gm.avatar_url
+       FROM guild_members gm
+       JOIN users u ON u.user_id = gm.user_id
+       WHERE gm.guild_id = $1
+         AND (gm.display_name ILIKE $2 OR u.display_name ILIKE $2 OR u.username ILIKE $2)
+         AND u.username NOT ILIKE 'deleted%user'
+         AND gm.display_name NOT ILIKE 'deleted%user'
+       LIMIT 10`,
+      [guildOrError.guildId, `%${searchQuery}%`],
+    );
     return jsonResponse(
       rows.map((row) => ({
         user_id: String(row.user_id),
@@ -516,185 +571,239 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
         username: row.username,
         avatar: row.avatar_url,
       })),
-    )
-  })
+    );
+  });
 
-  app.get('/ranking/monthly/:year/:month/discord-embed', async (c) => {
-    const year = pathInt(c.req.param('year'))
-    const month = pathInt(c.req.param('month'))
+  app.get("/ranking/monthly/:year/:month/discord-embed", async (c) => {
+    const year = pathInt(c.req.param("year"));
+    const month = pathInt(c.req.param("month"));
     if (year === null || month === null || year < 2020 || year > 2100 || month < 1 || month > 12) {
-      return jsonError(422, 'Invalid path parameter')
+      return jsonError(422, "Invalid path parameter");
     }
-    const access = requireMonthAccess(c, year, month)
-    if ('error' in access) return access.error
+    const access = requireMonthAccess(c, year, month);
+    if ("error" in access) return access.error;
     // プレビューは再配布されるため、認証済みでも未公開月は返さない。
-    if (access.isRestricted) return jsonError(403, "This month's report is not public yet.")
-    if (!/^\d+$/.test(cfg.guildId)) return jsonError(503, 'Report guild is not configured.')
-    const ckey = `discord_month_${cfg.guildId}_${cfg.kingRoleId}_${year}_${month}`
-    const headers = { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'public, max-age=600' }
-    const cached = cache.get(ckey)
-    if (typeof cached === 'string') return new Response(cached, { headers })
-    const pool = deps.getPool()
-    if (!pool) return jsonError(503, 'Service unavailable.')
-    const { rows } = await pool.query(monthlyRankingQuery(year, month, cfg.guildId))
-    if (!rows.length) return jsonError(404, 'No ranking data.')
-    const component = buildRankingComponent(monthlyRankingTitle(year, month), rows as RankingRow[], year, month, true, undefined, cfg.kingRoleId)
-    const payload = serializeComponentEmbed(component)
-    if (!payload) return jsonError(413, 'Component embed exceeds the 3000-byte limit.')
-    cache.set(ckey, payload, 600)
-    return new Response(payload, { headers })
-  })
+    if (access.isRestricted) return jsonError(403, "This month's report is not public yet.");
+    const guildOrError = await requireGuild(c);
+    if (guildOrError instanceof Response) return guildOrError;
+    const guild = guildOrError;
+    const ckey = `discord_month_${guild.guildId}_${year}_${month}`;
+    const headers = {
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "public, max-age=600",
+    };
+    const cached = cache.get(ckey);
+    if (typeof cached === "string") return new Response(cached, { headers });
+    const pool = deps.getPool();
+    if (!pool) return jsonError(503, "Service unavailable.");
+    const { rows } = await pool.query(
+      monthlyRankingQuery(year, month, guild.guildId, guild.excludedChannelIds),
+    );
+    if (!rows.length) return jsonError(404, "No ranking data.");
+    const base = dashboardBaseUrl(guild);
+    const component = buildRankingComponent(
+      monthlyRankingTitle(year, month),
+      rows as RankingRow[],
+      year,
+      month,
+      guild.kingRoleId !== null,
+      base ? `${base}/month/${year}/${month}` : undefined,
+      guild.kingRoleId ?? DEFAULT_KING_ROLE_ID,
+      {
+        ...rankingComponentNotes(
+          guild.excludedChannelIds,
+          guild.displayConfig.privateChatCategoryIds,
+        ),
+        allUrl: base ? `${base}/all` : null,
+      },
+    );
+    const payload = serializeComponentEmbed(component);
+    if (!payload) return jsonError(413, "Component embed exceeds the 3000-byte limit.");
+    cache.set(ckey, payload, 600);
+    return new Response(payload, { headers });
+  });
 
-  app.get('/ranking/monthly/:year/:month', async (c) => {
-    const year = pathInt(c.req.param('year'))
-    const month = pathInt(c.req.param('month'))
-    if (year === null || month === null) return jsonError(422, 'Invalid path parameter')
-    const access = requireMonthAccess(c, year, month)
-    if ('error' in access) return access.error
+  app.get("/ranking/monthly/:year/:month", async (c) => {
+    const year = pathInt(c.req.param("year"));
+    const month = pathInt(c.req.param("month"));
+    if (year === null || month === null) return jsonError(422, "Invalid path parameter");
+    const access = requireMonthAccess(c, year, month);
+    if ("error" in access) return access.error;
 
-    const channelParam = c.req.query('channel_id')
+    const channelParam = c.req.query("channel_id");
     if (channelParam !== undefined && !/^-?\d+$/.test(channelParam)) {
-      return jsonError(422, 'Invalid query parameter: channel_id')
+      return jsonError(422, "Invalid query parameter: channel_id");
     }
-    const channelId = channelParam ?? null
+    const channelId = channelParam ?? null;
 
-    const ckey = `rank_m_${year}_${month}_${channelId ?? 'None'}`
-    const headers = monthCacheControl(access.isRestricted)
-    const cached = cache.get(ckey)
-    if (cached !== undefined) return jsonResponse(cached, 200, headers)
+    const guildOrError = await requireGuild(c);
+    if (guildOrError instanceof Response) return guildOrError;
+    const guild = guildOrError;
 
-    const bounds = monthBounds(year, month)
-    if (!Array.isArray(bounds)) return jsonError(400, bounds)
-    const [startDate, endDate] = bounds
+    const ckey = `rank_m_${guild.guildId}_${year}_${month}_${channelId ?? "None"}`;
+    const headers = monthCacheControl(access.isRestricted);
+    const cached = cache.get(ckey);
+    if (cached !== undefined) return jsonResponse(cached, 200, headers);
 
-    const pool = deps.getPool()
-    if (!pool) return jsonError(503, 'Service unavailable.')
-    const scope = await getChannelScopeIds(pool, channelId)
-    if (scope instanceof Response) return scope
+    const bounds = monthBounds(year, month);
+    if (!Array.isArray(bounds)) return jsonError(400, bounds);
+    const [startDate, endDate] = bounds;
 
-    const params: unknown[] = [startDate, endDate]
+    const pool = deps.getPool();
+    if (!pool) return jsonError(503, "Service unavailable.");
+    const scope = await getChannelScopeIds(pool, guild, channelId);
+    if (scope instanceof Response) return scope;
+
+    const params: unknown[] = [startDate, endDate];
     const filters = [
-      'm.created_at >= $1',
-      'm.created_at < $2',
-      'm.is_bot = FALSE',
+      "m.created_at >= $1",
+      "m.created_at < $2",
+      "m.is_bot = FALSE",
       DELETED_USER_FILTER,
-    ]
-    addChannelScopeFilter(params, filters, 'm.channel_id', scope)
+    ];
+    params.push(guild.guildId);
+    filters.push(`m.guild_id = $${params.length}`);
+    addChannelScopeFilter(params, filters, "m.channel_id", scope);
     const query = `
       SELECT m.user_id, count(*) as c, sum(m.char_count) as chars, u.display_name, u.username, u.avatar_url
       FROM messages m LEFT JOIN users u ON m.user_id = u.user_id
-      WHERE ${filters.join(' AND ')}
+      WHERE ${filters.join(" AND ")}
       GROUP BY m.user_id, u.display_name, u.username, u.avatar_url
-      ORDER BY c DESC LIMIT 100`
-    const { rows } = await pool.query(query, params)
-    const res = formatRankingResponse(rows)
-    cache.set(ckey, res, 600)
-    return jsonResponse(res, 200, headers)
-  })
+      ORDER BY c DESC LIMIT 100`;
+    const { rows } = await pool.query(query, params);
+    const res = formatRankingResponse(rows);
+    cache.set(ckey, res, 600);
+    return jsonResponse(res, 200, headers);
+  });
 
-  app.get('/ranking/total/discord-embed', async () => {
-    if (!/^\d+$/.test(cfg.guildId)) return jsonError(503, 'Report guild is not configured.')
-    const ckey = `discord_total_${cfg.guildId}`
-    const headers = { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': `public, max-age=${LIVE_TOTAL_CACHE_TTL}` }
-    const cached = cache.get(ckey)
-    if (typeof cached === 'string') return new Response(cached, { headers })
-    const pool = deps.getPool()
-    if (!pool) return jsonError(503, 'Service unavailable.')
-    const { rows } = await pool.query(totalRankingQuery(cfg.guildId))
-    if (!rows.length) return jsonError(404, 'No ranking data.')
-    const payload = serializeComponentEmbed(buildAllTimeRankingComponent(rows as RankingRow[]))
-    if (!payload) return jsonError(413, 'Component embed exceeds the 3000-byte limit.')
-    cache.set(ckey, payload, LIVE_TOTAL_CACHE_TTL)
-    return new Response(payload, { headers })
-  })
+  app.get("/ranking/total/discord-embed", async (c) => {
+    const guildOrError = await requireGuild(c);
+    if (guildOrError instanceof Response) return guildOrError;
+    const guild = guildOrError;
+    const ckey = `discord_total_${guild.guildId}`;
+    const headers = {
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": `public, max-age=${LIVE_TOTAL_CACHE_TTL}`,
+    };
+    const cached = cache.get(ckey);
+    if (typeof cached === "string") return new Response(cached, { headers });
+    const pool = deps.getPool();
+    if (!pool) return jsonError(503, "Service unavailable.");
+    const { rows } = await pool.query(totalRankingQuery(guild.guildId, guild.excludedChannelIds));
+    if (!rows.length) return jsonError(404, "No ranking data.");
+    const base = dashboardBaseUrl(guild);
+    const payload = serializeComponentEmbed(
+      buildAllTimeRankingComponent(rows as RankingRow[], {
+        ...rankingComponentNotes(
+          guild.excludedChannelIds,
+          guild.displayConfig.privateChatCategoryIds,
+        ),
+        allUrl: base ? `${base}/all` : null,
+      }),
+    );
+    if (!payload) return jsonError(413, "Component embed exceeds the 3000-byte limit.");
+    cache.set(ckey, payload, LIVE_TOTAL_CACHE_TTL);
+    return new Response(payload, { headers });
+  });
 
-  app.get('/ranking/total', async (c) => {
-    const channelParam = c.req.query('channel_id')
+  app.get("/ranking/total", async (c) => {
+    const channelParam = c.req.query("channel_id");
     if (channelParam !== undefined && !/^-?\d+$/.test(channelParam)) {
-      return jsonError(422, 'Invalid query parameter: channel_id')
+      return jsonError(422, "Invalid query parameter: channel_id");
     }
-    const channelId = channelParam ?? null
-    const endRaw = c.req.query('end_date')
-    const endDate = parseEndDate(endRaw)
-    if (endDate === 'invalid') return jsonError(422, 'Invalid query parameter: end_date')
+    const channelId = channelParam ?? null;
+    const endRaw = c.req.query("end_date");
+    const endDate = parseEndDate(endRaw);
+    if (endDate === "invalid") return jsonError(422, "Invalid query parameter: end_date");
 
-    const ttl = endDate ? 86400 : LIVE_TOTAL_CACHE_TTL
-    const headers = { 'Cache-Control': `public, max-age=${ttl}` }
-    const ckey = `rank_t_${channelId ?? 'None'}_${endRaw ?? 'None'}`
-    const cached = cache.get(ckey)
-    if (cached !== undefined) return jsonResponse(cached, 200, headers)
+    const ttl = endDate ? 86400 : LIVE_TOTAL_CACHE_TTL;
+    const headers = { "Cache-Control": `public, max-age=${ttl}` };
+    const guildOrError = await requireGuild(c);
+    if (guildOrError instanceof Response) return guildOrError;
+    const guild = guildOrError;
+    const ckey = `rank_t_${guild.guildId}_${channelId ?? "None"}_${endRaw ?? "None"}`;
+    const cached = cache.get(ckey);
+    if (cached !== undefined) return jsonResponse(cached, 200, headers);
 
-    const pool = deps.getPool()
-    if (!pool) return jsonError(503, 'Service unavailable.')
-    const scope = await getChannelScopeIds(pool, channelId)
-    if (scope instanceof Response) return scope
+    const pool = deps.getPool();
+    if (!pool) return jsonError(503, "Service unavailable.");
+    const scope = await getChannelScopeIds(pool, guild, channelId);
+    if (scope instanceof Response) return scope;
 
-    const params: unknown[] = []
-    const filters = ['m.is_bot = FALSE', DELETED_USER_FILTER]
-    addChannelScopeFilter(params, filters, 'm.channel_id', scope)
+    const params: unknown[] = [];
+    const filters = ["m.is_bot = FALSE", DELETED_USER_FILTER];
+    params.push(guild.guildId);
+    filters.push(`m.guild_id = $${params.length}`);
+    addChannelScopeFilter(params, filters, "m.channel_id", scope);
     if (endDate) {
-      params.push(endDate)
-      filters.push(`m.created_at <= $${params.length}`)
+      params.push(endDate);
+      filters.push(`m.created_at <= $${params.length}`);
     }
     const query = `
       SELECT m.user_id, count(*) as c, sum(m.char_count) as chars, u.display_name, u.username, u.avatar_url
       FROM messages m LEFT JOIN users u ON m.user_id = u.user_id
-      WHERE ${filters.join(' AND ')}
+      WHERE ${filters.join(" AND ")}
       GROUP BY m.user_id, u.display_name, u.username, u.avatar_url
-      ORDER BY c DESC LIMIT 100`
-    const { rows } = await pool.query(query, params)
-    const res = formatRankingResponse(rows)
-    cache.set(ckey, res, ttl)
-    return jsonResponse(res, 200, headers)
-  })
+      ORDER BY c DESC LIMIT 100`;
+    const { rows } = await pool.query(query, params);
+    const res = formatRankingResponse(rows);
+    cache.set(ckey, res, ttl);
+    return jsonResponse(res, 200, headers);
+  });
 
-  app.get('/users/:userId/rank/monthly/:year/:month', async (c) => {
-    const userId = c.req.param('userId')
-    if (!/^\d+$/.test(userId)) return jsonError(422, 'Invalid path parameter: user_id')
-    const year = pathInt(c.req.param('year'))
-    const month = pathInt(c.req.param('month'))
-    if (year === null || month === null) return jsonError(422, 'Invalid path parameter')
+  app.get("/users/:userId/rank/monthly/:year/:month", async (c) => {
+    const userId = c.req.param("userId");
+    if (!/^\d+$/.test(userId)) return jsonError(422, "Invalid path parameter: user_id");
+    const year = pathInt(c.req.param("year"));
+    const month = pathInt(c.req.param("month"));
+    if (year === null || month === null) return jsonError(422, "Invalid path parameter");
 
-    const access = requireMonthAccess(c, year, month)
-    if ('error' in access) return access.error
+    const access = requireMonthAccess(c, year, month);
+    if ("error" in access) return access.error;
 
-    const channelParam = c.req.query('channel_id')
+    const channelParam = c.req.query("channel_id");
     if (channelParam !== undefined && !/^-?\d+$/.test(channelParam)) {
-      return jsonError(422, 'Invalid query parameter: channel_id')
+      return jsonError(422, "Invalid query parameter: channel_id");
     }
-    const channelId = channelParam ?? null
+    const channelId = channelParam ?? null;
 
-    const ckey = `user_rank_m_${userId}_${year}_${month}_${channelId ?? 'None'}`
-    const headers = monthCacheControl(access.isRestricted)
-    const cached = cache.get(ckey)
-    if (cached !== undefined) return jsonResponse(cached ?? null, 200, headers)
+    const guildOrError = await requireGuild(c);
+    if (guildOrError instanceof Response) return guildOrError;
+    const guild = guildOrError;
 
-    const bounds = monthBounds(year, month)
-    if (!Array.isArray(bounds)) return jsonError(400, bounds)
-    const [startDate, endDate] = bounds
+    const ckey = `user_rank_m_${guild.guildId}_${userId}_${year}_${month}_${channelId ?? "None"}`;
+    const headers = monthCacheControl(access.isRestricted);
+    const cached = cache.get(ckey);
+    if (cached !== undefined) return jsonResponse(cached ?? null, 200, headers);
 
-    const pool = deps.getPool()
-    if (!pool) return jsonError(503, 'Service unavailable.')
-    const scope = await getChannelScopeIds(pool, channelId)
-    if (scope instanceof Response) return scope
+    const bounds = monthBounds(year, month);
+    if (!Array.isArray(bounds)) return jsonError(400, bounds);
+    const [startDate, endDate] = bounds;
 
-    const params: unknown[] = [startDate, endDate]
+    const pool = deps.getPool();
+    if (!pool) return jsonError(503, "Service unavailable.");
+    const scope = await getChannelScopeIds(pool, guild, channelId);
+    if (scope instanceof Response) return scope;
+
+    const params: unknown[] = [startDate, endDate];
     const filters = [
-      'm.created_at >= $1',
-      'm.created_at < $2',
-      'm.is_bot = FALSE',
+      "m.created_at >= $1",
+      "m.created_at < $2",
+      "m.is_bot = FALSE",
       DELETED_USER_FILTER,
-    ]
-    addChannelScopeFilter(params, filters, 'm.channel_id', scope)
-    params.push(userId)
-    const targetParam = `$${params.length}`
+    ];
+    params.push(guild.guildId);
+    filters.push(`m.guild_id = $${params.length}`);
+    addChannelScopeFilter(params, filters, "m.channel_id", scope);
+    params.push(userId);
+    const targetParam = `$${params.length}`;
 
     const query = `
         WITH counts AS (
             SELECT m.user_id, count(*) AS c, sum(m.char_count) AS chars
             FROM messages m
             LEFT JOIN users u ON m.user_id = u.user_id
-            WHERE ${filters.join(' AND ')}
+            WHERE ${filters.join(" AND ")}
             GROUP BY m.user_id
         ),
         target AS (
@@ -712,52 +821,57 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
             (SELECT count(*) + 1 FROM counts c2 WHERE c2.c > t.c)::int AS rank
         FROM target t
         LEFT JOIN users u ON t.user_id = u.user_id
-    `
-    const { rows } = await pool.query(query, params)
-    const res = formatUserRankResponse(rows[0])
-    cache.set(ckey, res, 600)
-    return jsonResponse(res, 200, headers)
-  })
+    `;
+    const { rows } = await pool.query(query, params);
+    const res = formatUserRankResponse(rows[0]);
+    cache.set(ckey, res, 600);
+    return jsonResponse(res, 200, headers);
+  });
 
-  app.get('/users/:userId/rank/total', async (c) => {
-    const userId = c.req.param('userId')
-    if (!/^\d+$/.test(userId)) return jsonError(422, 'Invalid path parameter: user_id')
-    const channelParam = c.req.query('channel_id')
+  app.get("/users/:userId/rank/total", async (c) => {
+    const userId = c.req.param("userId");
+    if (!/^\d+$/.test(userId)) return jsonError(422, "Invalid path parameter: user_id");
+    const channelParam = c.req.query("channel_id");
     if (channelParam !== undefined && !/^-?\d+$/.test(channelParam)) {
-      return jsonError(422, 'Invalid query parameter: channel_id')
+      return jsonError(422, "Invalid query parameter: channel_id");
     }
-    const channelId = channelParam ?? null
-    const endRaw = c.req.query('end_date')
-    const endDate = parseEndDate(endRaw)
-    if (endDate === 'invalid') return jsonError(422, 'Invalid query parameter: end_date')
+    const channelId = channelParam ?? null;
+    const endRaw = c.req.query("end_date");
+    const endDate = parseEndDate(endRaw);
+    if (endDate === "invalid") return jsonError(422, "Invalid query parameter: end_date");
 
-    const ttl = endDate ? 86400 : LIVE_TOTAL_CACHE_TTL
-    const headers = { 'Cache-Control': `public, max-age=${ttl}` }
-    const ckey = `user_rank_t_${userId}_${channelId ?? 'None'}_${endRaw ?? 'None'}`
-    const cached = cache.get(ckey)
-    if (cached !== undefined) return jsonResponse(cached ?? null, 200, headers)
+    const ttl = endDate ? 86400 : LIVE_TOTAL_CACHE_TTL;
+    const headers = { "Cache-Control": `public, max-age=${ttl}` };
+    const guildOrError = await requireGuild(c);
+    if (guildOrError instanceof Response) return guildOrError;
+    const guild = guildOrError;
+    const ckey = `user_rank_t_${guild.guildId}_${userId}_${channelId ?? "None"}_${endRaw ?? "None"}`;
+    const cached = cache.get(ckey);
+    if (cached !== undefined) return jsonResponse(cached ?? null, 200, headers);
 
-    const pool = deps.getPool()
-    if (!pool) return jsonError(503, 'Service unavailable.')
-    const scope = await getChannelScopeIds(pool, channelId)
-    if (scope instanceof Response) return scope
+    const pool = deps.getPool();
+    if (!pool) return jsonError(503, "Service unavailable.");
+    const scope = await getChannelScopeIds(pool, guild, channelId);
+    if (scope instanceof Response) return scope;
 
-    const params: unknown[] = []
-    const filters = ['m.is_bot = FALSE', DELETED_USER_FILTER]
-    addChannelScopeFilter(params, filters, 'm.channel_id', scope)
+    const params: unknown[] = [];
+    const filters = ["m.is_bot = FALSE", DELETED_USER_FILTER];
+    params.push(guild.guildId);
+    filters.push(`m.guild_id = $${params.length}`);
+    addChannelScopeFilter(params, filters, "m.channel_id", scope);
     if (endDate) {
-      params.push(endDate)
-      filters.push(`m.created_at <= $${params.length}`)
+      params.push(endDate);
+      filters.push(`m.created_at <= $${params.length}`);
     }
-    params.push(userId)
-    const targetParam = `$${params.length}`
+    params.push(userId);
+    const targetParam = `$${params.length}`;
 
     const query = `
         WITH counts AS (
             SELECT m.user_id, count(*) AS c, sum(m.char_count) AS chars
             FROM messages m
             LEFT JOIN users u ON m.user_id = u.user_id
-            WHERE ${filters.join(' AND ')}
+            WHERE ${filters.join(" AND ")}
             GROUP BY m.user_id
         ),
         target AS (
@@ -775,312 +889,340 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
             (SELECT count(*) + 1 FROM counts c2 WHERE c2.c > t.c)::int AS rank
         FROM target t
         LEFT JOIN users u ON t.user_id = u.user_id
-    `
-    const { rows } = await pool.query(query, params)
-    const res = formatUserRankResponse(rows[0])
-    cache.set(ckey, res, ttl)
-    return jsonResponse(res, 200, headers)
-  })
+    `;
+    const { rows } = await pool.query(query, params);
+    const res = formatUserRankResponse(rows[0]);
+    cache.set(ckey, res, ttl);
+    return jsonResponse(res, 200, headers);
+  });
 
-  app.get('/stats/history/:year/:month', async (c) => {
-    const year = pathInt(c.req.param('year'))
-    const month = pathInt(c.req.param('month'))
-    if (year === null || month === null) return jsonError(422, 'Invalid path parameter')
+  app.get("/stats/history/:year/:month", async (c) => {
+    const year = pathInt(c.req.param("year"));
+    const month = pathInt(c.req.param("month"));
+    if (year === null || month === null) return jsonError(422, "Invalid path parameter");
 
-    const userIds = c.req.queries('user_id') ?? []
+    const userIds = c.req.queries("user_id") ?? [];
     if (userIds.length > 5) {
-      return jsonError(400, 'At most 5 user_id values are allowed')
+      return jsonError(400, "At most 5 user_id values are allowed");
     }
 
-    const access = requireMonthAccess(c, year, month)
-    if ('error' in access) return access.error
+    const access = requireMonthAccess(c, year, month);
+    if ("error" in access) return access.error;
 
-    const channelParam = c.req.query('channel_id')
+    const channelParam = c.req.query("channel_id");
     if (channelParam !== undefined && !/^-?\d+$/.test(channelParam)) {
-      return jsonError(422, 'Invalid query parameter: channel_id')
+      return jsonError(422, "Invalid query parameter: channel_id");
     }
-    const channelId = channelParam ?? null
+    const channelId = channelParam ?? null;
 
-    const ckey = `hist_m_${year}_${month}_${channelId ?? 'None'}_${computeUserIdsKey(userIds)}`
-    const headers = monthCacheControl(access.isRestricted)
-    const cached = cache.get(ckey)
-    if (cached !== undefined) return jsonResponse(cached, 200, headers)
+    const guildOrError = await requireGuild(c);
+    if (guildOrError instanceof Response) return guildOrError;
+    const guild = guildOrError;
 
-    const bounds = monthBounds(year, month)
-    if (!Array.isArray(bounds)) return jsonError(400, bounds)
-    const [startDate, endDate] = bounds
+    const ckey = `hist_m_${guild.guildId}_${year}_${month}_${channelId ?? "None"}_${computeUserIdsKey(userIds)}`;
+    const headers = monthCacheControl(access.isRestricted);
+    const cached = cache.get(ckey);
+    if (cached !== undefined) return jsonResponse(cached, 200, headers);
 
-    const pool = deps.getPool()
-    if (!pool) return jsonError(503, 'Service unavailable.')
-    const scope = await getChannelScopeIds(pool, channelId)
-    if (scope instanceof Response) return scope
+    const bounds = monthBounds(year, month);
+    if (!Array.isArray(bounds)) return jsonError(400, bounds);
+    const [startDate, endDate] = bounds;
 
-    const params: unknown[] = [startDate, endDate]
-    const filters = ['created_at >= $1', 'created_at < $2', 'is_bot = FALSE']
-    addChannelScopeFilter(params, filters, 'channel_id', scope)
-    const where = filters.join(' AND ')
+    const pool = deps.getPool();
+    if (!pool) return jsonError(503, "Service unavailable.");
+    const scope = await getChannelScopeIds(pool, guild, channelId);
+    if (scope instanceof Response) return scope;
+
+    const params: unknown[] = [startDate, endDate];
+    const filters = ["created_at >= $1", "created_at < $2", "is_bot = FALSE"];
+    params.push(guild.guildId);
+    filters.push(`guild_id = $${params.length}`);
+    addChannelScopeFilter(params, filters, "channel_id", scope);
+    const where = filters.join(" AND ");
 
     const { rows: tRows } = await pool.query(
       `SELECT DATE(created_at) as d, count(*) as c FROM messages WHERE ${where} GROUP BY DATE(created_at)`,
       params,
-    )
+    );
     const topWhere = where
-      .replaceAll('channel_id', 'm.channel_id')
-      .replaceAll('created_at', 'm.created_at')
-      .replaceAll('is_bot', 'm.is_bot')
+      .replaceAll("channel_id", "m.channel_id")
+      .replaceAll("created_at", "m.created_at")
+      .replaceAll("is_bot", "m.is_bot");
     const { rows: topU } = await pool.query(
       `SELECT m.user_id, count(*) as c FROM messages m LEFT JOIN users u ON m.user_id = u.user_id WHERE ${topWhere} AND ${DELETED_USER_FILTER} GROUP BY m.user_id ORDER BY c DESC LIMIT 100`,
       params,
-    )
+    );
 
-    const targetIds = topU.map((row) => String(row.user_id))
+    const targetIds = topU.map((row) => String(row.user_id));
     for (const uid of userIds) {
-      if (/^\d+$/.test(uid) && !targetIds.includes(uid)) targetIds.push(uid)
+      if (/^\d+$/.test(uid) && !targetIds.includes(uid)) targetIds.push(uid);
     }
 
-    const dataMap = new Map<string, Record<string, unknown>>()
+    const dataMap = new Map<string, Record<string, unknown>>();
     for (const row of tRows) {
-      const date = String(row.d)
-      dataMap.set(date, { date, total: Number(row.c) })
+      const date = String(row.d);
+      dataMap.set(date, { date, total: Number(row.c) });
     }
-    const uDetails: Record<string, Record<string, unknown>> = {}
+    const uDetails: Record<string, Record<string, unknown>> = {};
     if (targetIds.length > 0) {
-      const detailParams = [...params, targetIds]
+      const detailParams = [...params, targetIds];
       const { rows } = await pool.query(
         `SELECT DATE(created_at) as d, user_id, count(*) as c FROM messages WHERE ${where} AND user_id = ANY($${detailParams.length}::bigint[]) GROUP BY DATE(created_at), user_id`,
         detailParams,
-      )
+      );
       for (const row of rows) {
-        const date = String(row.d)
-        if (!dataMap.has(date)) dataMap.set(date, { date, total: 0 })
-        dataMap.get(date)![String(row.user_id)] = Number(row.c)
+        const date = String(row.d);
+        if (!dataMap.has(date)) dataMap.set(date, { date, total: 0 });
+        dataMap.get(date)![String(row.user_id)] = Number(row.c);
       }
       const { rows: uRows } = await pool.query(
-        'SELECT user_id, display_name, username, avatar_url FROM users WHERE user_id = ANY($1::bigint[])',
+        "SELECT user_id, display_name, username, avatar_url FROM users WHERE user_id = ANY($1::bigint[])",
         [targetIds],
-      )
+      );
       for (const row of uRows) {
         uDetails[String(row.user_id)] = {
           name: row.display_name,
           username: row.username,
           avatar: row.avatar_url,
-        }
+        };
       }
     }
 
     const chartData = [...dataMap.values()].sort((a, b) =>
       String(a.date) < String(b.date) ? -1 : String(a.date) > String(b.date) ? 1 : 0,
-    )
+    );
     const res = {
       chart_data: chartData,
       users: uDetails,
       top_user_id: topU.length > 0 ? String(topU[0].user_id) : null,
-    }
-    cache.set(ckey, res, 600)
-    return jsonResponse(res, 200, headers)
-  })
+    };
+    cache.set(ckey, res, 600);
+    return jsonResponse(res, 200, headers);
+  });
 
-  app.get('/stats/history/total', async (c) => {
-    const userIds = c.req.queries('user_id') ?? []
+  app.get("/stats/history/total", async (c) => {
+    const userIds = c.req.queries("user_id") ?? [];
     if (userIds.length > 5) {
-      return jsonError(400, 'At most 5 user_id values are allowed')
+      return jsonError(400, "At most 5 user_id values are allowed");
     }
-    const channelParam = c.req.query('channel_id')
+    const channelParam = c.req.query("channel_id");
     if (channelParam !== undefined && !/^-?\d+$/.test(channelParam)) {
-      return jsonError(422, 'Invalid query parameter: channel_id')
+      return jsonError(422, "Invalid query parameter: channel_id");
     }
-    const channelId = channelParam ?? null
-    const endRaw = c.req.query('end_date')
-    const endDate = parseEndDate(endRaw)
-    if (endDate === 'invalid') return jsonError(422, 'Invalid query parameter: end_date')
+    const channelId = channelParam ?? null;
+    const endRaw = c.req.query("end_date");
+    const endDate = parseEndDate(endRaw);
+    if (endDate === "invalid") return jsonError(422, "Invalid query parameter: end_date");
 
-    const ttl = endDate ? 86400 : LIVE_TOTAL_CACHE_TTL
-    const headers = { 'Cache-Control': `public, max-age=${ttl}` }
-    const ckey = `hist_t_${channelId ?? 'None'}_${computeUserIdsKey(userIds)}_${endRaw ?? 'None'}`
-    const cached = cache.get(ckey)
-    if (cached !== undefined) return jsonResponse(cached, 200, headers)
+    const ttl = endDate ? 86400 : LIVE_TOTAL_CACHE_TTL;
+    const headers = { "Cache-Control": `public, max-age=${ttl}` };
+    const guildOrError = await requireGuild(c);
+    if (guildOrError instanceof Response) return guildOrError;
+    const guild = guildOrError;
+    const ckey = `hist_t_${guild.guildId}_${channelId ?? "None"}_${computeUserIdsKey(userIds)}_${endRaw ?? "None"}`;
+    const cached = cache.get(ckey);
+    if (cached !== undefined) return jsonResponse(cached, 200, headers);
 
-    const pool = deps.getPool()
-    if (!pool) return jsonError(503, 'Service unavailable.')
-    const scope = await getChannelScopeIds(pool, channelId)
-    if (scope instanceof Response) return scope
+    const pool = deps.getPool();
+    if (!pool) return jsonError(503, "Service unavailable.");
+    const scope = await getChannelScopeIds(pool, guild, channelId);
+    if (scope instanceof Response) return scope;
 
-    const params: unknown[] = []
-    const filters = ['is_bot = FALSE']
-    addChannelScopeFilter(params, filters, 'channel_id', scope)
+    const params: unknown[] = [];
+    const filters = ["is_bot = FALSE"];
+    params.push(guild.guildId);
+    filters.push(`guild_id = $${params.length}`);
+    addChannelScopeFilter(params, filters, "channel_id", scope);
     if (endDate) {
-      params.push(endDate)
-      filters.push(`created_at <= $${params.length}`)
+      params.push(endDate);
+      filters.push(`created_at <= $${params.length}`);
     }
-    const where = filters.join(' AND ')
+    const where = filters.join(" AND ");
 
     const { rows: tRows } = await pool.query(
       `SELECT DATE(created_at) as d, count(*) as c FROM messages WHERE ${where} GROUP BY DATE(created_at)`,
       params,
-    )
+    );
     const lineWhere = where
-      .replaceAll('channel_id', 'm.channel_id')
-      .replaceAll('created_at', 'm.created_at')
+      .replaceAll("channel_id", "m.channel_id")
+      .replaceAll("created_at", "m.created_at");
     const { rows: topU } = await pool.query(
       `SELECT m.user_id, count(*) as c FROM messages m LEFT JOIN users u ON m.user_id = u.user_id WHERE ${lineWhere} AND ${DELETED_USER_FILTER} GROUP BY m.user_id ORDER BY c DESC LIMIT 100`,
       params,
-    )
+    );
 
-    const targetIds = topU.map((row) => String(row.user_id))
+    const targetIds = topU.map((row) => String(row.user_id));
     for (const uid of userIds) {
-      if (/^\d+$/.test(uid) && !targetIds.includes(uid)) targetIds.push(uid)
+      if (/^\d+$/.test(uid) && !targetIds.includes(uid)) targetIds.push(uid);
     }
 
-    const dataMap = new Map<string, Record<string, unknown>>()
+    const dataMap = new Map<string, Record<string, unknown>>();
     for (const row of tRows) {
-      const date = String(row.d)
-      dataMap.set(date, { date, total: Number(row.c) })
+      const date = String(row.d);
+      dataMap.set(date, { date, total: Number(row.c) });
     }
-    const uDetails: Record<string, Record<string, unknown>> = {}
+    const uDetails: Record<string, Record<string, unknown>> = {};
     if (targetIds.length > 0) {
-      const detailParams = [...params, targetIds]
+      const detailParams = [...params, targetIds];
       const { rows } = await pool.query(
         `SELECT DATE(created_at) as d, user_id, count(*) as c FROM messages WHERE ${where} AND user_id = ANY($${detailParams.length}::bigint[]) GROUP BY DATE(created_at), user_id`,
         detailParams,
-      )
+      );
       for (const row of rows) {
-        const date = String(row.d)
-        if (!dataMap.has(date)) dataMap.set(date, { date, total: 0 })
-        dataMap.get(date)![String(row.user_id)] = Number(row.c)
+        const date = String(row.d);
+        if (!dataMap.has(date)) dataMap.set(date, { date, total: 0 });
+        dataMap.get(date)![String(row.user_id)] = Number(row.c);
       }
       const { rows: uRows } = await pool.query(
-        'SELECT user_id, display_name, username, avatar_url FROM users WHERE user_id = ANY($1::bigint[])',
+        "SELECT user_id, display_name, username, avatar_url FROM users WHERE user_id = ANY($1::bigint[])",
         [targetIds],
-      )
+      );
       for (const row of uRows) {
         uDetails[String(row.user_id)] = {
           name: row.display_name,
           username: row.username,
           avatar: row.avatar_url,
-        }
+        };
       }
     }
 
     const chartData = [...dataMap.values()].sort((a, b) =>
       String(a.date) < String(b.date) ? -1 : String(b.date) < String(a.date) ? 1 : 0,
-    )
+    );
     const res = {
       chart_data: chartData,
       users: uDetails,
       top_user_id: topU.length > 0 ? String(topU[0].user_id) : null,
-    }
-    cache.set(ckey, res, ttl)
-    return jsonResponse(res, 200, headers)
-  })
+    };
+    cache.set(ckey, res, ttl);
+    return jsonResponse(res, 200, headers);
+  });
 
-  app.get('/stats/heatmap/:year/:month', async (c) => {
-    const year = pathInt(c.req.param('year'))
-    const month = pathInt(c.req.param('month'))
-    if (year === null || month === null) return jsonError(422, 'Invalid path parameter')
+  app.get("/stats/heatmap/:year/:month", async (c) => {
+    const year = pathInt(c.req.param("year"));
+    const month = pathInt(c.req.param("month"));
+    if (year === null || month === null) return jsonError(422, "Invalid path parameter");
 
-    const access = requireMonthAccess(c, year, month)
-    if ('error' in access) return access.error
+    const access = requireMonthAccess(c, year, month);
+    if ("error" in access) return access.error;
 
-    const channelParam = c.req.query('channel_id')
+    const channelParam = c.req.query("channel_id");
     if (channelParam !== undefined && !/^-?\d+$/.test(channelParam)) {
-      return jsonError(422, 'Invalid query parameter: channel_id')
+      return jsonError(422, "Invalid query parameter: channel_id");
     }
-    const channelId = channelParam ?? null
+    const channelId = channelParam ?? null;
 
-    const ckey = `heat_m_${year}_${month}_${channelId ?? 'None'}`
-    const headers = monthCacheControl(access.isRestricted)
-    const cached = cache.get(ckey)
-    if (cached !== undefined) return jsonResponse(cached, 200, headers)
+    const guildOrError = await requireGuild(c);
+    if (guildOrError instanceof Response) return guildOrError;
+    const guild = guildOrError;
 
-    const bounds = monthBounds(year, month)
-    if (!Array.isArray(bounds)) return jsonError(400, bounds)
-    const [startDate, endDate] = bounds
+    const ckey = `heat_m_${guild.guildId}_${year}_${month}_${channelId ?? "None"}`;
+    const headers = monthCacheControl(access.isRestricted);
+    const cached = cache.get(ckey);
+    if (cached !== undefined) return jsonResponse(cached, 200, headers);
 
-    const pool = deps.getPool()
-    if (!pool) return jsonError(503, 'Service unavailable.')
-    const scope = await getChannelScopeIds(pool, channelId)
-    if (scope instanceof Response) return scope
+    const bounds = monthBounds(year, month);
+    if (!Array.isArray(bounds)) return jsonError(400, bounds);
+    const [startDate, endDate] = bounds;
 
-    const params: unknown[] = [startDate, endDate]
-    const filters = ['created_at >= $1', 'created_at < $2', 'is_bot = FALSE']
-    addChannelScopeFilter(params, filters, 'channel_id', scope)
+    const pool = deps.getPool();
+    if (!pool) return jsonError(503, "Service unavailable.");
+    const scope = await getChannelScopeIds(pool, guild, channelId);
+    if (scope instanceof Response) return scope;
+
+    const params: unknown[] = [startDate, endDate];
+    const filters = ["created_at >= $1", "created_at < $2", "is_bot = FALSE"];
+    params.push(guild.guildId);
+    filters.push(`guild_id = $${params.length}`);
+    addChannelScopeFilter(params, filters, "channel_id", scope);
 
     const { rows } = await pool.query(
-      `SELECT EXTRACT(DOW FROM created_at AT TIME ZONE 'Asia/Tokyo') as dow, EXTRACT(HOUR FROM created_at AT TIME ZONE 'Asia/Tokyo') as hour, count(*) as count FROM messages WHERE ${filters.join(' AND ')} GROUP BY dow, hour`,
+      `SELECT EXTRACT(DOW FROM created_at AT TIME ZONE 'Asia/Tokyo') as dow, EXTRACT(HOUR FROM created_at AT TIME ZONE 'Asia/Tokyo') as hour, count(*) as count FROM messages WHERE ${filters.join(" AND ")} GROUP BY dow, hour`,
       params,
-    )
+    );
     const res = rows.map((row) => ({
       dow: Number(row.dow),
       hour: Number(row.hour),
       count: Number(row.count),
-    }))
-    cache.set(ckey, res, 600)
-    return jsonResponse(res, 200, headers)
-  })
+    }));
+    cache.set(ckey, res, 600);
+    return jsonResponse(res, 200, headers);
+  });
 
-  app.get('/stats/heatmap/total', async (c) => {
-    const channelParam = c.req.query('channel_id')
+  app.get("/stats/heatmap/total", async (c) => {
+    const channelParam = c.req.query("channel_id");
     if (channelParam !== undefined && !/^-?\d+$/.test(channelParam)) {
-      return jsonError(422, 'Invalid query parameter: channel_id')
+      return jsonError(422, "Invalid query parameter: channel_id");
     }
-    const channelId = channelParam ?? null
-    const endRaw = c.req.query('end_date')
-    const endDate = parseEndDate(endRaw)
-    if (endDate === 'invalid') return jsonError(422, 'Invalid query parameter: end_date')
+    const channelId = channelParam ?? null;
+    const endRaw = c.req.query("end_date");
+    const endDate = parseEndDate(endRaw);
+    if (endDate === "invalid") return jsonError(422, "Invalid query parameter: end_date");
 
-    const ttl = endDate ? 86400 : LIVE_TOTAL_CACHE_TTL
-    const headers = { 'Cache-Control': `public, max-age=${ttl}` }
-    const ckey = `heat_t_${channelId ?? 'None'}_${endRaw ?? 'None'}`
-    const cached = cache.get(ckey)
-    if (cached !== undefined) return jsonResponse(cached, 200, headers)
+    const ttl = endDate ? 86400 : LIVE_TOTAL_CACHE_TTL;
+    const headers = { "Cache-Control": `public, max-age=${ttl}` };
+    const guildOrError = await requireGuild(c);
+    if (guildOrError instanceof Response) return guildOrError;
+    const guild = guildOrError;
+    const ckey = `heat_t_${guild.guildId}_${channelId ?? "None"}_${endRaw ?? "None"}`;
+    const cached = cache.get(ckey);
+    if (cached !== undefined) return jsonResponse(cached, 200, headers);
 
-    const pool = deps.getPool()
-    if (!pool) return jsonError(503, 'Service unavailable.')
-    const scope = await getChannelScopeIds(pool, channelId)
-    if (scope instanceof Response) return scope
+    const pool = deps.getPool();
+    if (!pool) return jsonError(503, "Service unavailable.");
+    const scope = await getChannelScopeIds(pool, guild, channelId);
+    if (scope instanceof Response) return scope;
 
-    const params: unknown[] = []
-    const filters = ['is_bot = FALSE']
-    addChannelScopeFilter(params, filters, 'channel_id', scope)
+    const params: unknown[] = [];
+    const filters = ["is_bot = FALSE"];
+    params.push(guild.guildId);
+    filters.push(`guild_id = $${params.length}`);
+    addChannelScopeFilter(params, filters, "channel_id", scope);
     if (endDate) {
-      params.push(endDate)
-      filters.push(`created_at <= $${params.length}`)
+      params.push(endDate);
+      filters.push(`created_at <= $${params.length}`);
     }
 
     const { rows } = await pool.query(
-      `SELECT EXTRACT(DOW FROM created_at AT TIME ZONE 'Asia/Tokyo') as dow, EXTRACT(HOUR FROM created_at AT TIME ZONE 'Asia/Tokyo') as hour, count(*) as count FROM messages WHERE ${filters.join(' AND ')} GROUP BY dow, hour`,
+      `SELECT EXTRACT(DOW FROM created_at AT TIME ZONE 'Asia/Tokyo') as dow, EXTRACT(HOUR FROM created_at AT TIME ZONE 'Asia/Tokyo') as hour, count(*) as count FROM messages WHERE ${filters.join(" AND ")} GROUP BY dow, hour`,
       params,
-    )
+    );
     const res = rows.map((row) => ({
       dow: Number(row.dow),
       hour: Number(row.hour),
       count: Number(row.count),
-    }))
-    cache.set(ckey, res, ttl)
-    return jsonResponse(res, 200, headers)
-  })
+    }));
+    cache.set(ckey, res, ttl);
+    return jsonResponse(res, 200, headers);
+  });
 
-  app.get('/stats/channels_distribution/:year/:month', async (c) => {
-    const year = pathInt(c.req.param('year'))
-    const month = pathInt(c.req.param('month'))
-    if (year === null || month === null) return jsonError(422, 'Invalid path parameter')
+  app.get("/stats/channels_distribution/:year/:month", async (c) => {
+    const year = pathInt(c.req.param("year"));
+    const month = pathInt(c.req.param("month"));
+    if (year === null || month === null) return jsonError(422, "Invalid path parameter");
 
-    const access = requireMonthAccess(c, year, month)
-    if ('error' in access) return access.error
+    const access = requireMonthAccess(c, year, month);
+    if ("error" in access) return access.error;
 
-    const ckey = `pie_m_${year}_${month}`
-    const headers = monthCacheControl(access.isRestricted)
-    const cached = cache.get(ckey)
-    if (cached !== undefined) return jsonResponse(cached, 200, headers)
+    const guildOrError = await requireGuild(c);
+    if (guildOrError instanceof Response) return guildOrError;
+    const guild = guildOrError;
 
-    const bounds = monthBounds(year, month)
-    if (!Array.isArray(bounds)) return jsonError(400, bounds)
-    const [startDate, endDate] = bounds
+    const ckey = `pie_m_${guild.guildId}_${year}_${month}`;
+    const headers = monthCacheControl(access.isRestricted);
+    const cached = cache.get(ckey);
+    if (cached !== undefined) return jsonResponse(cached, 200, headers);
 
-    const pool = deps.getPool()
-    if (!pool) return jsonError(503, 'Service unavailable.')
+    const bounds = monthBounds(year, month);
+    if (!Array.isArray(bounds)) return jsonError(400, bounds);
+    const [startDate, endDate] = bounds;
+
+    const pool = deps.getPool();
+    if (!pool) return jsonError(503, "Service unavailable.");
+    const privateChatCategoryIds = guild.displayConfig.privateChatCategoryIds;
     const { rows } = await pool.query(
-      `
+      privateChatCategoryIds.length > 0
+        ? `
       SELECT
           CASE
               WHEN c.category_id = ANY($3::bigint[]) THEN c.name
@@ -1089,40 +1231,58 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
           count(*) AS count
       FROM messages m
       JOIN channels c ON m.channel_id = c.channel_id
-      WHERE m.created_at >= $1 AND m.created_at < $2 AND m.is_bot = FALSE
+      WHERE m.created_at >= $1 AND m.created_at < $2 AND m.is_bot = FALSE AND m.guild_id = $4
+      GROUP BY 1
+      ORDER BY count DESC
+      LIMIT 10
+      `
+        : `
+      SELECT c.name, count(*) AS count
+      FROM messages m
+      JOIN channels c ON m.channel_id = c.channel_id
+      WHERE m.created_at >= $1 AND m.created_at < $2 AND m.is_bot = FALSE AND m.guild_id = $3
       GROUP BY 1
       ORDER BY count DESC
       LIMIT 10
       `,
-      [startDate, endDate, cfg.privateChatCategoryIds],
-    )
-    const res = rows.map((row) => ({ name: row.name as string, value: Number(row.count) }))
-    cache.set(ckey, res, 600)
-    return jsonResponse(res, 200, headers)
-  })
+      privateChatCategoryIds.length > 0
+        ? [startDate, endDate, privateChatCategoryIds, guild.guildId]
+        : [startDate, endDate, guild.guildId],
+    );
+    const res = rows.map((row) => ({ name: row.name as string, value: Number(row.count) }));
+    cache.set(ckey, res, 600);
+    return jsonResponse(res, 200, headers);
+  });
 
-  app.get('/stats/channels_distribution/total', async (c) => {
-    const endRaw = c.req.query('end_date')
-    const endDate = parseEndDate(endRaw)
-    if (endDate === 'invalid') return jsonError(422, 'Invalid query parameter: end_date')
+  app.get("/stats/channels_distribution/total", async (c) => {
+    const endRaw = c.req.query("end_date");
+    const endDate = parseEndDate(endRaw);
+    if (endDate === "invalid") return jsonError(422, "Invalid query parameter: end_date");
 
-    const ttl = endDate ? 86400 : LIVE_TOTAL_CACHE_TTL
-    const headers = { 'Cache-Control': `public, max-age=${ttl}` }
-    const ckey = `pie_t_${endRaw ?? 'None'}`
-    const cached = cache.get(ckey)
-    if (cached !== undefined) return jsonResponse(cached, 200, headers)
+    const ttl = endDate ? 86400 : LIVE_TOTAL_CACHE_TTL;
+    const headers = { "Cache-Control": `public, max-age=${ttl}` };
+    const guildOrError = await requireGuild(c);
+    if (guildOrError instanceof Response) return guildOrError;
+    const guild = guildOrError;
+    const ckey = `pie_t_${guild.guildId}_${endRaw ?? "None"}`;
+    const cached = cache.get(ckey);
+    if (cached !== undefined) return jsonResponse(cached, 200, headers);
 
-    const pool = deps.getPool()
-    if (!pool) return jsonError(503, 'Service unavailable.')
-    const params: unknown[] = [cfg.privateChatCategoryIds]
-    const filters = ['m.is_bot = FALSE']
+    const pool = deps.getPool();
+    if (!pool) return jsonError(503, "Service unavailable.");
+    const privateChatCategoryIds = guild.displayConfig.privateChatCategoryIds;
+    const params: unknown[] = privateChatCategoryIds.length > 0 ? [privateChatCategoryIds] : [];
+    const filters = ["m.is_bot = FALSE"];
+    params.push(guild.guildId);
+    filters.push(`m.guild_id = $${params.length}`);
     if (endDate) {
-      params.push(endDate)
-      filters.push(`m.created_at <= $${params.length}`)
+      params.push(endDate);
+      filters.push(`m.created_at <= $${params.length}`);
     }
 
     const { rows } = await pool.query(
-      `
+      privateChatCategoryIds.length > 0
+        ? `
       SELECT
           CASE
               WHEN c.category_id = ANY($1::bigint[]) THEN c.name
@@ -1131,71 +1291,86 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
           count(*) AS count
       FROM messages m
       JOIN channels c ON m.channel_id = c.channel_id
-      WHERE ${filters.join(' AND ')}
+      WHERE ${filters.join(" AND ")}
+      GROUP BY 1
+      ORDER BY count DESC
+      LIMIT 10
+      `
+        : `
+      SELECT c.name, count(*) AS count
+      FROM messages m
+      JOIN channels c ON m.channel_id = c.channel_id
+      WHERE ${filters.join(" AND ")}
       GROUP BY 1
       ORDER BY count DESC
       LIMIT 10
       `,
       params,
-    )
-    const res = rows.map((row) => ({ name: row.name as string, value: Number(row.count) }))
-    cache.set(ckey, res, ttl)
-    return jsonResponse(res, 200, headers)
-  })
+    );
+    const res = rows.map((row) => ({ name: row.name as string, value: Number(row.count) }));
+    cache.set(ckey, res, ttl);
+    return jsonResponse(res, 200, headers);
+  });
 
-  app.get('/stats/analysis/:year/:month', async (c) => {
-    const year = pathInt(c.req.param('year'))
-    const month = pathInt(c.req.param('month'))
-    if (year === null || month === null) return jsonError(422, 'Invalid path parameter')
+  app.get("/stats/analysis/:year/:month", async (c) => {
+    const year = pathInt(c.req.param("year"));
+    const month = pathInt(c.req.param("month"));
+    if (year === null || month === null) return jsonError(422, "Invalid path parameter");
 
-    const access = requireMonthAccess(c, year, month)
-    if ('error' in access) return access.error
+    const access = requireMonthAccess(c, year, month);
+    if ("error" in access) return access.error;
 
-    const channelParam = c.req.query('channel_id')
+    const channelParam = c.req.query("channel_id");
     if (channelParam !== undefined && !/^-?\d+$/.test(channelParam)) {
-      return jsonError(422, 'Invalid query parameter: channel_id')
+      return jsonError(422, "Invalid query parameter: channel_id");
     }
-    const channelId = channelParam ?? null
-    const userParam = c.req.query('user_id')
+    const channelId = channelParam ?? null;
+    const userParam = c.req.query("user_id");
     if (userParam !== undefined && userParam.length > 20) {
-      return jsonError(422, 'Invalid query parameter: user_id')
+      return jsonError(422, "Invalid query parameter: user_id");
     }
 
-    const ckey = `ana_m_${year}_${month}_${channelId ?? 'None'}_${userParam ?? 'None'}`
-    const headers = monthCacheControl(access.isRestricted)
-    const cached = cache.get(ckey)
-    if (cached !== undefined) return jsonResponse(cached, 200, headers)
+    const guildOrError = await requireGuild(c);
+    if (guildOrError instanceof Response) return guildOrError;
+    const guild = guildOrError;
 
-    const bounds = monthBounds(year, month)
-    if (!Array.isArray(bounds)) return jsonError(400, bounds)
-    const [startDate, endDate] = bounds
+    const ckey = `ana_m_${guild.guildId}_${year}_${month}_${channelId ?? "None"}_${userParam ?? "None"}`;
+    const headers = monthCacheControl(access.isRestricted);
+    const cached = cache.get(ckey);
+    if (cached !== undefined) return jsonResponse(cached, 200, headers);
 
-    const pool = deps.getPool()
-    if (!pool) return jsonError(503, 'Service unavailable.')
-    const scope = await getChannelScopeIds(pool, channelId)
-    if (scope instanceof Response) return scope
+    const bounds = monthBounds(year, month);
+    if (!Array.isArray(bounds)) return jsonError(400, bounds);
+    const [startDate, endDate] = bounds;
 
-    const params: unknown[] = [startDate, endDate]
-    const filters = ['created_at >= $1', 'created_at < $2', 'is_bot = FALSE']
-    addChannelScopeFilter(params, filters, 'channel_id', scope)
+    const pool = deps.getPool();
+    if (!pool) return jsonError(503, "Service unavailable.");
+    const scope = await getChannelScopeIds(pool, guild, channelId);
+    if (scope instanceof Response) return scope;
+
+    const params: unknown[] = [startDate, endDate];
+    const filters = ["created_at >= $1", "created_at < $2", "is_bot = FALSE"];
+    params.push(guild.guildId);
+    filters.push(`guild_id = $${params.length}`);
+    addChannelScopeFilter(params, filters, "channel_id", scope);
     if (userParam && /^\d+$/.test(userParam)) {
-      params.push(userParam)
-      filters.push(`user_id = $${params.length}`)
+      params.push(userParam);
+      filters.push(`user_id = $${params.length}`);
     }
-    const where = filters.join(' AND ')
+    const where = filters.join(" AND ");
 
     const { rows: countRows } = await pool.query(
       `SELECT count(*) as total FROM messages WHERE ${where}`,
       params,
-    )
-    const total = Number(countRows[0]?.total ?? 0)
-    if (total === 0) return jsonResponse({ total: 0 }, 200, headers)
+    );
+    const total = Number(countRows[0]?.total ?? 0);
+    if (total === 0) return jsonResponse({ total: 0 }, 200, headers);
 
     const uniqueWhere = where
-      .replaceAll('channel_id', 'm.channel_id')
-      .replaceAll('created_at', 'm.created_at')
-      .replaceAll('is_bot', 'm.is_bot')
-      .replaceAll('user_id', 'm.user_id')
+      .replaceAll("channel_id", "m.channel_id")
+      .replaceAll("created_at", "m.created_at")
+      .replaceAll("is_bot", "m.is_bot")
+      .replaceAll("user_id", "m.user_id");
     const { rows: uniqueRows } = await pool.query(
       `
       SELECT count(DISTINCT m.user_id) AS unique_users
@@ -1205,21 +1380,21 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
         AND ${DELETED_USER_FILTER}
       `,
       params,
-    )
-    const uniqueUsers = Number(uniqueRows[0]?.unique_users ?? 0)
+    );
+    const uniqueUsers = Number(uniqueRows[0]?.unique_users ?? 0);
 
     const { rows: maxDRows } = await pool.query(
       `SELECT DATE(created_at AT TIME ZONE 'Asia/Tokyo') as d, count(*) as c FROM messages WHERE ${where} GROUP BY d ORDER BY c DESC LIMIT 1`,
       params,
-    )
+    );
     const { rows: maxWRows } = await pool.query(
       `SELECT EXTRACT(DOW FROM created_at AT TIME ZONE 'Asia/Tokyo') as dow, count(*) as c FROM messages WHERE ${where} GROUP BY dow ORDER BY c DESC LIMIT 1`,
       params,
-    )
+    );
     const { rows: maxHRows } = await pool.query(
       `SELECT EXTRACT(HOUR FROM created_at AT TIME ZONE 'Asia/Tokyo') as h, count(*) as c FROM messages WHERE ${where} GROUP BY h ORDER BY c DESC LIMIT 1`,
       params,
-    )
+    );
 
     const res = {
       total,
@@ -1227,61 +1402,66 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
       max_date: maxDRows[0] ? { date: String(maxDRows[0].d), count: Number(maxDRows[0].c) } : null,
       max_dow: maxWRows[0] ? { dow: Number(maxWRows[0].dow), count: Number(maxWRows[0].c) } : null,
       max_hour: maxHRows[0] ? { hour: Number(maxHRows[0].h), count: Number(maxHRows[0].c) } : null,
-    }
-    cache.set(ckey, res, 600)
-    return jsonResponse(res, 200, headers)
-  })
+    };
+    cache.set(ckey, res, 600);
+    return jsonResponse(res, 200, headers);
+  });
 
-  app.get('/stats/analysis/total', async (c) => {
-    const channelParam = c.req.query('channel_id')
+  app.get("/stats/analysis/total", async (c) => {
+    const channelParam = c.req.query("channel_id");
     if (channelParam !== undefined && !/^-?\d+$/.test(channelParam)) {
-      return jsonError(422, 'Invalid query parameter: channel_id')
+      return jsonError(422, "Invalid query parameter: channel_id");
     }
-    const channelId = channelParam ?? null
-    const userParam = c.req.query('user_id')
+    const channelId = channelParam ?? null;
+    const userParam = c.req.query("user_id");
     if (userParam !== undefined && userParam.length > 20) {
-      return jsonError(422, 'Invalid query parameter: user_id')
+      return jsonError(422, "Invalid query parameter: user_id");
     }
-    const endRaw = c.req.query('end_date')
-    const endDate = parseEndDate(endRaw)
-    if (endDate === 'invalid') return jsonError(422, 'Invalid query parameter: end_date')
+    const endRaw = c.req.query("end_date");
+    const endDate = parseEndDate(endRaw);
+    if (endDate === "invalid") return jsonError(422, "Invalid query parameter: end_date");
 
-    const ttl = endDate ? 86400 : LIVE_TOTAL_CACHE_TTL
-    const headers = { 'Cache-Control': `public, max-age=${ttl}` }
-    const ckey = `ana_t_${channelId ?? 'None'}_${userParam ?? 'None'}_${endRaw ?? 'None'}`
-    const cached = cache.get(ckey)
-    if (cached !== undefined) return jsonResponse(cached, 200, headers)
+    const ttl = endDate ? 86400 : LIVE_TOTAL_CACHE_TTL;
+    const headers = { "Cache-Control": `public, max-age=${ttl}` };
+    const guildOrError = await requireGuild(c);
+    if (guildOrError instanceof Response) return guildOrError;
+    const guild = guildOrError;
+    const ckey = `ana_t_${guild.guildId}_${channelId ?? "None"}_${userParam ?? "None"}_${endRaw ?? "None"}`;
+    const cached = cache.get(ckey);
+    if (cached !== undefined) return jsonResponse(cached, 200, headers);
 
-    const pool = deps.getPool()
-    if (!pool) return jsonError(503, 'Service unavailable.')
-    const scope = await getChannelScopeIds(pool, channelId)
-    if (scope instanceof Response) return scope
+    const pool = deps.getPool();
+    if (!pool) return jsonError(503, "Service unavailable.");
+    const scope = await getChannelScopeIds(pool, guild, channelId);
+    if (scope instanceof Response) return scope;
 
-    const params: unknown[] = []
-    const filters = ['is_bot = FALSE']
-    addChannelScopeFilter(params, filters, 'channel_id', scope)
+    const params: unknown[] = [];
+    const filters = ["is_bot = FALSE"];
+    params.push(guild.guildId);
+    filters.push(`guild_id = $${params.length}`);
+    addChannelScopeFilter(params, filters, "channel_id", scope);
     if (userParam && /^\d+$/.test(userParam)) {
-      params.push(userParam)
-      filters.push(`user_id = $${params.length}`)
+      params.push(userParam);
+      filters.push(`user_id = $${params.length}`);
     }
     if (endDate) {
-      params.push(endDate)
-      filters.push(`created_at <= $${params.length}`)
+      params.push(endDate);
+      filters.push(`created_at <= $${params.length}`);
     }
-    const where = filters.join(' AND ')
+    const where = filters.join(" AND ");
 
     const { rows: countRows } = await pool.query(
       `SELECT count(*) as total FROM messages WHERE ${where}`,
       params,
-    )
-    const total = Number(countRows[0]?.total ?? 0)
-    if (total === 0) return jsonResponse({ total: 0 }, 200, headers)
+    );
+    const total = Number(countRows[0]?.total ?? 0);
+    if (total === 0) return jsonResponse({ total: 0 }, 200, headers);
 
     const uniqueWhere = where
-      .replaceAll('channel_id', 'm.channel_id')
-      .replaceAll('created_at', 'm.created_at')
-      .replaceAll('is_bot', 'm.is_bot')
-      .replaceAll('user_id', 'm.user_id')
+      .replaceAll("channel_id", "m.channel_id")
+      .replaceAll("created_at", "m.created_at")
+      .replaceAll("is_bot", "m.is_bot")
+      .replaceAll("user_id", "m.user_id");
     const { rows: uniqueRows } = await pool.query(
       `
       SELECT count(DISTINCT m.user_id) AS unique_users
@@ -1291,21 +1471,21 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
         AND ${DELETED_USER_FILTER}
       `,
       params,
-    )
-    const uniqueUsers = Number(uniqueRows[0]?.unique_users ?? 0)
+    );
+    const uniqueUsers = Number(uniqueRows[0]?.unique_users ?? 0);
 
     const { rows: maxDRows } = await pool.query(
       `SELECT DATE(created_at AT TIME ZONE 'Asia/Tokyo') as d, count(*) as c FROM messages WHERE ${where} GROUP BY d ORDER BY c DESC LIMIT 1`,
       params,
-    )
+    );
     const { rows: maxWRows } = await pool.query(
       `SELECT EXTRACT(DOW FROM created_at AT TIME ZONE 'Asia/Tokyo') as dow, count(*) as c FROM messages WHERE ${where} GROUP BY dow ORDER BY c DESC LIMIT 1`,
       params,
-    )
+    );
     const { rows: maxHRows } = await pool.query(
       `SELECT EXTRACT(HOUR FROM created_at AT TIME ZONE 'Asia/Tokyo') as h, count(*) as c FROM messages WHERE ${where} GROUP BY h ORDER BY c DESC LIMIT 1`,
       params,
-    )
+    );
 
     const res = {
       total,
@@ -1313,76 +1493,80 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
       max_date: maxDRows[0] ? { date: String(maxDRows[0].d), count: Number(maxDRows[0].c) } : null,
       max_dow: maxWRows[0] ? { dow: Number(maxWRows[0].dow), count: Number(maxWRows[0].c) } : null,
       max_hour: maxHRows[0] ? { hour: Number(maxHRows[0].h), count: Number(maxHRows[0].c) } : null,
-    }
-    cache.set(ckey, res, ttl)
-    return jsonResponse(res, 200, headers)
-  })
+    };
+    cache.set(ckey, res, ttl);
+    return jsonResponse(res, 200, headers);
+  });
 
-  return app
+  return app;
 }
 
-function parseEndDate(raw: string | undefined): Date | null | 'invalid' {
-  if (!raw) return null
-  const dateOnly = /^\d{4}-\d{2}-\d{2}$/
-  let normalized = raw
+function parseEndDate(raw: string | undefined): Date | null | "invalid" {
+  if (!raw) return null;
+  const dateOnly = /^\d{4}-\d{2}-\d{2}$/;
+  let normalized = raw;
   if (dateOnly.test(normalized)) {
-    normalized = `${normalized}T00:00:00Z`
+    normalized = `${normalized}T00:00:00Z`;
   } else if (!/(?:Z|[+-]\d{2}:?\d{2})$/.test(normalized)) {
-    normalized = `${normalized}Z`
+    normalized = `${normalized}Z`;
   }
-  if (!/^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?)?(Z|[+-]\d{2}:?\d{2})?$/.test(normalized)) {
-    return 'invalid'
+  if (
+    !/^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?)?(Z|[+-]\d{2}:?\d{2})?$/.test(normalized)
+  ) {
+    return "invalid";
   }
-  const parsed = new Date(normalized)
-  if (Number.isNaN(parsed.getTime())) return 'invalid'
-  return parsed
+  const parsed = new Date(normalized);
+  if (Number.isNaN(parsed.getTime())) return "invalid";
+  return parsed;
 }
 
 export function startWarmLoop(app: Hono<AppEnv>): () => void {
   const targets = [
-    { name: 'ranking_total', path: '/ranking/total' },
-    { name: 'history_total', path: '/stats/history/total' },
-    { name: 'heatmap_total', path: '/stats/heatmap/total' },
-    { name: 'channels_total', path: '/stats/channels_distribution/total' },
-    { name: 'analysis_total', path: '/stats/analysis/total' },
-  ]
+    { name: "ranking_total", path: "/ranking/total" },
+    { name: "history_total", path: "/stats/history/total" },
+    { name: "heatmap_total", path: "/stats/heatmap/total" },
+    { name: "channels_total", path: "/stats/channels_distribution/total" },
+    { name: "analysis_total", path: "/stats/analysis/total" },
+  ];
 
-  let interval: NodeJS.Timeout | null = null
-  let stopped = false
+  let interval: NodeJS.Timeout | null = null;
+  let stopped = false;
 
   const warmOnce = async (): Promise<void> => {
     for (const target of targets) {
-      const started = performance.now()
+      const started = performance.now();
       try {
-        const response = await app.request(target.path)
-        const elapsedMs = Math.round(performance.now() - started)
+        const response = await app.request(target.path);
+        const elapsedMs = Math.round(performance.now() - started);
         if (response.ok) {
-          console.log(`${new Date().toISOString()} [INFO] ymkw-api: Warmed cache: ${target.name} (${elapsedMs}ms)`)
+          console.log(
+            `${new Date().toISOString()} [INFO] ymkw-api: Warmed cache: ${target.name} (${elapsedMs}ms)`,
+          );
         } else {
           console.warn(
             `${new Date().toISOString()} [WARN] ymkw-api: Failed to warm cache: ${target.name} status=${response.status}`,
-          )
+          );
         }
       } catch (error) {
         console.warn(
           `${new Date().toISOString()} [WARN] ymkw-api: Failed to warm cache: ${target.name}`,
           error,
-        )
+        );
       }
     }
-  }
+  };
 
   const schedule = setTimeout(() => {
-    if (stopped) return
-    void warmOnce()
+    if (stopped) return;
+    void warmOnce();
     interval = setInterval(() => {
-      if (!stopped) void warmOnce()
-    }, TOTAL_CACHE_WARM_INTERVAL_MS)
-  }, 10_000)
+      if (!stopped) void warmOnce();
+    }, TOTAL_CACHE_WARM_INTERVAL_MS);
+  }, 10_000);
 
   return () => {
-    stopped = true
-    clearTimeout(schedule)
-    if (interval) clearInterval(interval)
-  }
+    stopped = true;
+    clearTimeout(schedule);
+    if (interval) clearInterval(interval);
+  };
 }

@@ -111,6 +111,24 @@ export function buildRankingComponent(
   return { type: 17, accent_color: 0x00ddff, components };
 }
 
+/** ギルド設定からランキングの注記行を組み立てる (Botとバックエンドの共有) */
+export function rankingComponentNotes(
+  excludedChannelIds: readonly string[],
+  privateChatCategoryIds: readonly unknown[] = [],
+): RankingComponentOptions {
+  const excludedNote =
+    excludedChannelIds.length === 1
+      ? `-# <#${excludedChannelIds[0]}>はランキングに含まれません`
+      : excludedChannelIds.length > 1
+        ? "-# 除外チャンネルの発言はランキングに含まれません"
+        : null;
+  const extraNote =
+    privateChatCategoryIds.length > 0
+      ? "-# <:4_:1453234089980334255> **プラチャ内の発言もカウントされます。**"
+      : null;
+  return { excludedNote, extraNote };
+}
+
 export function monthlyRankingTitle(year: number, month: number): string {
   return `<:1_:1453233921310589059> ${year}年${month}月の発言ランキングはこちら！`;
 }

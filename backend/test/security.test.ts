@@ -80,6 +80,42 @@ function loginRequest(body?: string): RequestInit {
   };
 }
 
+function fakeGuildRow(guildId: string) {
+  return {
+    guild_id: guildId,
+    name: "テストサーバー",
+    king_role_id: "1503873180362739834",
+    excluded_channel_ids: ["1406033558757314752"],
+    display_config: {
+      whitelistChannelIds: [],
+      privateChatCategoryIds: [],
+      bottomChannelCategoryIds: [],
+    },
+    domains: ["ymkw.top"],
+  };
+}
+
+/** ギルド解決用のクエリに応答するテスト用Poolラッパ */
+function withGuildLookup(pool: Pool, options: { domains?: Record<string, string> } = {}): Pool {
+  const stub = pool as unknown as {
+    query: (sql: unknown, values?: unknown[]) => Promise<{ rows: unknown[] }>;
+  };
+  const original = stub.query.bind(stub);
+  stub.query = async (sql: unknown, values?: unknown[]) => {
+    const text = typeof sql === "string" ? sql : String((sql as { text?: string })?.text ?? "");
+    const params = (values ?? []) as unknown[];
+    if (text.includes("FROM guilds ")) {
+      return { rows: [fakeGuildRow(String(params[0] ?? ""))] };
+    }
+    if (text.includes("FROM guild_domains")) {
+      const mapped = options.domains?.[String(params[0] ?? "")];
+      return { rows: mapped ? [{ guild_id: mapped }] : [] };
+    }
+    return original(sql, values);
+  };
+  return pool;
+}
+
 test("GUILD_ID未設定でも対象サーバーのDiscordプレビューを返し、明示設定も利用できる", async () => {
   const original = process.env.GUILD_ID;
   try {
@@ -87,12 +123,12 @@ test("GUILD_ID未設定でも対象サーバーのDiscordプレビューを返�
     const cfg = await config.loadConfig();
     assert.equal(cfg.guildId, "1355073968532619376");
     let queriedGuild: unknown;
-    const pool = {
+    const pool = withGuildLookup({
       query: async (query: { values: unknown[] }) => {
         queriedGuild = query.values[2];
         return { rows: [{ user_id: "123", count: 100, display_name: "テスト" }] };
       },
-    } as unknown as Pool;
+    } as unknown as Pool);
     const { app, cleanup } = await buildTestApp({ config: cfg, getPool: () => pool });
     try {
       const response = await app.request("/ranking/monthly/2025/10/discord-embed");
@@ -119,7 +155,7 @@ test("DiscordプレビューはBotと同じJST範囲・除外チャンネルで�
     display_name: `利用者${index}`,
   }));
   let calls = 0;
-  const pool = {
+  const pool = withGuildLookup({
     query: async (query: { text: string; values: unknown[] }) => {
       calls++;
       assert.match(query.text, /m\.guild_id = \$3 AND m\.channel_id <> ALL\(\$4::bigint\[\]\)/);
@@ -136,7 +172,7 @@ test("DiscordプレビューはBotと同じJST範囲・除外チャンネルで�
       ]);
       return { rows };
     },
-  } as unknown as Pool;
+  } as unknown as Pool);
   const { app, cleanup } = await buildTestApp({ config: cfg, getPool: () => pool });
   try {
     for (let index = 0; index < 2; index++) {
@@ -195,7 +231,7 @@ test("巨大なプレビューや空のランキングは情報を削って偽�
     [],
     [{ user_id: "123", count: 1, display_name: "非常に長い名前".repeat(500) }],
   ]) {
-    const pool = { query: async () => ({ rows }) } as unknown as Pool;
+    const pool = withGuildLookup({ query: async () => ({ rows }) } as unknown as Pool);
     const { app, cleanup } = await buildTestApp({ config: cfg, getPool: () => pool });
     try {
       const response = await app.request("/ranking/monthly/2025/10/discord-embed");
@@ -210,7 +246,7 @@ test("巨大なプレビューや空のランキングは情報を削って偽�
 test("全期間のプレビューはBotと同じ全期間集計で取得し、月間データやロール案内を含まない", async () => {
   const cfg = await config.loadConfig();
   let calls = 0;
-  const pool = {
+  const pool = withGuildLookup({
     query: async (query: { text: string; values: unknown[] }) => {
       calls++;
       assert.doesNotMatch(query.text, /created_at/);
@@ -219,7 +255,7 @@ test("全期間のプレビューはBotと同じ全期間集計で取得し、�
       assert.deepEqual(query.values, [cfg.guildId, ["1406033558757314752"]]);
       return { rows: [{ user_id: "123", count: 99999, display_name: "全期間1位" }] };
     },
-  } as unknown as Pool;
+  } as unknown as Pool);
   const { app, cleanup } = await buildTestApp({ config: cfg, getPool: () => pool });
   try {
     for (let index = 0; index < 2; index++) {
@@ -241,7 +277,7 @@ test("全期間のプレビューはBotと同じ全期間集計で取得し、�
 
 test("全期間プレビューも空データとサイズ超過では通常プレビューへ戻す", async () => {
   for (const rows of [[], [{ user_id: "123", count: 1, display_name: "長い名前".repeat(1000) }]]) {
-    const pool = { query: async () => ({ rows }) } as unknown as Pool;
+    const pool = withGuildLookup({ query: async () => ({ rows }) } as unknown as Pool);
     const { app, cleanup } = await buildTestApp({ getPool: () => pool });
     try {
       const response = await app.request("/ranking/total/discord-embed");
@@ -250,6 +286,37 @@ test("全期間プレビューも空データとサイズ超過では通常プ�
     } finally {
       await cleanup();
     }
+  }
+});
+
+test("x-forwarded-hostでギルドを解決し、未登録ホストのデータAPIは404になる", async () => {
+  const queriedGuilds: unknown[] = [];
+  const pool = withGuildLookup(
+    {
+      query: async (...args: unknown[]) => {
+        const first = args[0] as { values?: unknown[] } | string;
+        const values =
+          typeof first === "string" ? ((args[1] ?? []) as unknown[]) : (first.values ?? []);
+        queriedGuilds.push(values[0]);
+        return { rows: [] };
+      },
+    } as unknown as Pool,
+    { domains: { "guild2.example": "999888777" } },
+  );
+  const { app, cleanup } = await buildTestApp({ getPool: () => pool });
+  try {
+    const unknownHost = await app.request("/ranking/total", {
+      headers: { host: "unknown.example" },
+    });
+    assert.equal(unknownHost.status, 404);
+
+    const forwarded = await app.request("/ranking/total", {
+      headers: { "x-forwarded-host": "guild2.example" },
+    });
+    assert.equal(forwarded.status, 200);
+    assert.ok(queriedGuilds.includes("999888777"));
+  } finally {
+    await cleanup();
   }
 });
 

@@ -32,6 +32,7 @@ import {
   buildAllTimeRankingComponent,
   buildRankingComponent,
   monthlyRankingTitle,
+  rankingComponentNotes,
   type RankingComponentOptions,
   type RankingRow,
 } from "../../../shared/discord-ranking";
@@ -93,19 +94,11 @@ function buildMonthSelectRow(): ActionRowBuilder<StringSelectMenuBuilder> {
 /** ギルド設定からランキング描画の注記・URLを組み立てる */
 function rankingComponentOptions(config: GuildConfigWithDisplay | null): RankingComponentOptions {
   if (!config) return {};
-  const excluded = config.excludedChannelIds;
-  const excludedNote =
-    excluded.length === 1
-      ? `-# <#${excluded[0]}>はランキングに含まれません`
-      : excluded.length > 1
-        ? "-# 除外チャンネルの発言はランキングに含まれません"
-        : null;
   const privateChatCategoryIds = config.displayConfig?.privateChatCategoryIds;
-  const extraNote =
-    Array.isArray(privateChatCategoryIds) && privateChatCategoryIds.length > 0
-      ? "-# <:4_:1453234089980334255> **プラチャ内の発言もカウントされます。**"
-      : null;
-  return { excludedNote, extraNote };
+  return rankingComponentNotes(
+    config.excludedChannelIds,
+    Array.isArray(privateChatCategoryIds) ? privateChatCategoryIds : [],
+  );
 }
 
 export function buildRankingContainer(
