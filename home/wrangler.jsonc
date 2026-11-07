@@ -1,0 +1,1 @@
+{"$schema": "../frontend/node_modules/wrangler/config-schema.json", "name": "ymkw-home", "compatibility_date": "2026-09-28", "assets": { "directory": ".", "html_handling": "auto-trailing-slash" }}

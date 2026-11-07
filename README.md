@@ -41,12 +41,19 @@ Discordの今までのチャット履歴等を全て取得し、視覚化する�
 ## ディレクトリ構成
 
 ```
+- home/ : ymkw.topの案内ホームページ (静的サイト・Cloudflare Pages/Workersで配信)
 - Bot/ : データ収集およびコマンド操作を行うDiscordBot (discord.js + TypeScript)
 - backend/ : データベースと通信し、フロントエンドにJSONを提供するRESTAPI (Hono + TypeScript)
-- frontend/ : Webダッシュボード (Next.js App Router + React)
+- frontend/ : ダッシュボード (Next.js App Router + React) — analytics.ymkw.top および各ギルドのドメインで配信
 - db/ : スキーママイグレーションランナー (TypeScript) とSQLファイル
 - scripts/ : 管理者パスワードハッシュ生成ツール
 ```
+
+## ホームページとダッシュボードの分離
+
+- `ymkw.top` は案内ホームページ専用 (`home/` 静的サイト、Cloudflare Pages/Workersで配信)。ダッシュボードは含まない
+- ダッシュボードは `analytics.ymkw.top` (メインギルド) および各ギルドが設定した自分のドメインで配信される (k3s上のNext.js)
+- ダッシュボードのルート `/` は最新の公開月 (`/month/latest`) へリダイレクトする
 
 ## 環境変数について
 
@@ -75,6 +82,7 @@ Cloudflare Workers向けの成果物は`npm run cf:build`で生成し、`npm run
 
 SaaS型マルチテナント(1つのBot・1つのDBで複数サーバー)へ移行しています。設計と進捗は`docs/multi-guild.md`を参照してください。
 
+- `ymkw.top`は案内ホームページ(`home/`静的サイト)、ダッシュボードは`analytics.ymkw.top`と各ギルドのドメインで提供し、フロントとAPIは同一オリジンで動作する
 - ギルド設定(告知チャンネル・月間発言王ロール・ランキング除外チャンネル)はDBの`guilds`テーブルで管理し、Botの`/setup`コマンド(サーバー管理権限が必要)で変更できます。
 - `GUILD_ID`・`KING_ROLE_ID`・`ANNOUNCE_CHANNEL_ID`・`EXCLUDED_CHANNEL_IDS`(カンマ区切り)は既定ギルドのシード値です。起動時に`guilds`テーブルの未設定列のみを埋め、`/setup`による設定を優先します。
 - 表示名はギルドごとに`guild_members`テーブルへ保存され、ランキングはそのギルドの表示名で集計されます。

@@ -21,7 +21,7 @@
 - 本番インフラの正本は `vps` リポジトリ (`yexeserver:~/vps`)。トポロジは VPS Nginx (TLSエッジ) → WireGuard → k3s Traefik → アプリ
 
 ```
-テナントドメイン / ○○.a.yexe.xyz
+テナントドメイン / analytics.ymkw.top
         │
 VPS: Nginx (stream SNI分岐 / 後述フェーズ6)
         ├─ 既存ホスト名 (api.ymkw.top等) → 従来どおりNginxのHTTPS処理
@@ -30,7 +30,14 @@ VPS: Nginx (stream SNI分岐 / 後述フェーズ6)
         k3s Traefik
                 ├─ /api/* → ymkw-backend (Hono・既存)
                 └─ /*    → ymkw-frontend (Next.js SSR・新規)
+
+ymkw.top (案内ホームページ)
+        └─ Cloudflare Pages/Workers: home/ 静的サイト (ダッシュボードを含まない)
+                └─ リンク先は analytics.ymkw.top
 ```
+
+- **ymkw.topとダッシュボードは分離**されている。ymkw.topは案内ホームページ専用 (`home/` 静的サイトをCloudflare Pages/Workersで配信) で、ダッシュボードは `analytics.ymkw.top` および各ギルドのドメインで提供する
+- ダッシュボードのルート `/` は `/month/latest` へリダイレクトする (案内はymkw.topの役割)
 
 ## 現状の1サーバー前提箇所と対応方針
 
@@ -155,6 +162,7 @@ CREATE TABLE guild_members (
 | 2 | Bot: 全ギルド同期・収集・ランキング・発言王ロール、`/setup` コマンド | ✅ 完了 |
 | 3 | バックエンド: Hostヘッダーによるギルド解決、全ルートのguildフィルタ、キャッシュキー、display_config移行 | ✅ 完了 |
 | 4 | フロントエンド: 相対パス化、Host解決ヘルパー、`ymkw.top` 脱ハードコード、k3s用Dockerfile | ✅ 完了 |
+| 4.5 | ホームページ分離: `home/` 静的サイト (Cloudflare配信)、ダッシュボード `/` を `/month/latest` へリダイレクト、`analytics.ymkw.top` 登録 (009) | ✅ 完了 |
 | 5 | Discord OAuth: 中央コールバック + ギルドスコープセッション | 未 |
 | 6 | インフラ (vpsリポジトリ): k3s manifests、ワイルドカード証明書、Nginx stream SNI分岐 + Caddy | 未 |
 | 7 | ドメイン登録フロー: `/setup subdomain` (招待コード)、失効チェッカー、`/setup domain` + ask エンドポイント | 未 |
