@@ -410,6 +410,23 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
     );
   }
 
+  app.get("/guild-context", async (c) => {
+    const guildOrError = await requireGuild(c);
+    if (guildOrError instanceof Response) return guildOrError;
+    const guild = guildOrError;
+    return jsonResponse(
+      {
+        guildId: guild.guildId,
+        name: guild.name,
+        iconUrl: guild.iconUrl,
+        isDefault: guild.guildId === cfg.guildId,
+        domain: dashboardBaseUrl(guild),
+      },
+      200,
+      { "Cache-Control": "public, max-age=300" },
+    );
+  });
+
   app.get("/admin/session", (c) => {
     if (!adminOriginAllowed(c.req.header("origin"), cfg.allowedOrigins)) {
       return jsonError(403, "Invalid origin.");

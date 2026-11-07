@@ -4,7 +4,10 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Dashboard from "./Dashboard";
 
-const ADMIN_API_URL = process.env.NEXT_PUBLIC_ADMIN_API_URL || "https://api.ymkw.top";
+const ADMIN_API_URL =
+  process.env.NEXT_PUBLIC_SAME_ORIGIN === "true"
+    ? ""
+    : process.env.NEXT_PUBLIC_ADMIN_API_URL || "https://api.ymkw.top";
 
 function currentJstMonth() {
   const now = new Date();
@@ -14,7 +17,10 @@ function currentJstMonth() {
 
 function browserUserId() {
   if (typeof document === "undefined") return null;
-  const value = document.cookie.split(/;\s*/).find((cookie) => cookie.startsWith("user_id="))?.slice("user_id=".length);
+  const value = document.cookie
+    .split(/;\s*/)
+    .find((cookie) => cookie.startsWith("user_id="))
+    ?.slice("user_id=".length);
   return value && value !== "guest" ? decodeURIComponent(value) : null;
 }
 
@@ -30,7 +36,8 @@ export default function AdminMonthGate({ year, month }) {
   useEffect(() => {
     setUserId(browserUserId());
     const current = currentJstMonth();
-    const restricted = targetYear > current.year || (targetYear === current.year && targetMonth >= current.month);
+    const restricted =
+      targetYear > current.year || (targetYear === current.year && targetMonth >= current.month);
     if (!restricted) {
       setState("allowed");
       return;
@@ -50,27 +57,63 @@ export default function AdminMonthGate({ year, month }) {
     const response = await fetch(`${ADMIN_API_URL}/admin/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ password: new FormData(event.currentTarget).get("password")?.toString() || "" }),
+      body: JSON.stringify({
+        password: new FormData(event.currentTarget).get("password")?.toString() || "",
+      }),
       credentials: "include",
     });
     if (response.ok) {
       setState("allowed");
       return;
     }
-    setError(response.status === 429 ? "試行回数が多すぎます。10分後にもう一度お試しください。" : "パスワードが正しくありません。");
+    setError(
+      response.status === 429
+        ? "試行回数が多すぎます。10分後にもう一度お試しください。"
+        : "パスワードが正しくありません。",
+    );
   }
 
-  if (state === "allowed") return <Dashboard key={`${year}-${month}-${channelId ?? 'all'}`} year={year} month={month} channelId={channelId} userId={userId} />;
+  if (state === "allowed")
+    return (
+      <Dashboard
+        key={`${year}-${month}-${channelId ?? "all"}`}
+        year={year}
+        month={month}
+        channelId={channelId}
+        userId={userId}
+      />
+    );
   if (state === "checking") return <div className="min-h-[80vh]" aria-busy="true" />;
 
   return (
     <div className="min-h-[60vh] flex flex-col items-center justify-center p-4">
-      <form onSubmit={login} className="bg-white p-10 rounded-[2.5rem] border border-gray-200 shadow-2xl max-w-sm w-full text-center space-y-4">
+      <form
+        onSubmit={login}
+        className="bg-white p-10 rounded-[2.5rem] border border-gray-200 shadow-2xl max-w-sm w-full text-center space-y-4"
+      >
         <h1 className="text-2xl font-black text-gray-900">管理者エリア</h1>
-        <p className="text-sm text-gray-500">{year}年{month}月のデータを見るには管理者パスワードが必要です。</p>
-        <input type="password" name="password" placeholder="パスワード" autoComplete="current-password" className="w-full px-5 py-4 bg-gray-50 border border-gray-200 rounded-2xl text-center font-bold outline-hidden focus:border-blue-500" required />
-        {error && <p className="text-sm font-bold text-red-600" role="alert">{error}</p>}
-        <button type="submit" className="w-full py-4 bg-gray-900 text-white font-bold rounded-2xl hover:bg-black">認証</button>
+        <p className="text-sm text-gray-500">
+          {year}年{month}月のデータを見るには管理者パスワードが必要です。
+        </p>
+        <input
+          type="password"
+          name="password"
+          placeholder="パスワード"
+          autoComplete="current-password"
+          className="w-full px-5 py-4 bg-gray-50 border border-gray-200 rounded-2xl text-center font-bold outline-hidden focus:border-blue-500"
+          required
+        />
+        {error && (
+          <p className="text-sm font-bold text-red-600" role="alert">
+            {error}
+          </p>
+        )}
+        <button
+          type="submit"
+          className="w-full py-4 bg-gray-900 text-white font-bold rounded-2xl hover:bg-black"
+        >
+          認証
+        </button>
       </form>
     </div>
   );

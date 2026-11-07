@@ -17,6 +17,7 @@ export interface GuildDisplayConfig {
 export interface GuildContext {
   guildId: string;
   name: string;
+  iconUrl: string | null;
   kingRoleId: string | null;
   excludedChannelIds: string[];
   displayConfig: GuildDisplayConfig;
@@ -26,6 +27,7 @@ export interface GuildContext {
 interface GuildRow {
   guild_id: string | bigint;
   name: string;
+  icon_url: string | null;
   king_role_id: string | bigint | null;
   excluded_channel_ids: unknown;
   display_config: unknown;
@@ -63,6 +65,7 @@ function toGuildContext(row: GuildRow): GuildContext {
   return {
     guildId: String(row.guild_id),
     name: row.name,
+    iconUrl: row.icon_url ?? null,
     kingRoleId: parseId(row.king_role_id),
     excludedChannelIds: parseIdArray(row.excluded_channel_ids),
     displayConfig: parseDisplayConfig(row.display_config),
@@ -85,7 +88,7 @@ export function normalizeHost(raw: string | undefined | null): string {
 }
 
 const GUILD_BY_ID_SQL = `
-  SELECT g.guild_id, g.name, g.king_role_id, g.excluded_channel_ids, g.display_config,
+  SELECT g.guild_id, g.name, g.icon_url, g.king_role_id, g.excluded_channel_ids, g.display_config,
          array_agg(d.domain ORDER BY d.domain) FILTER (WHERE d.domain IS NOT NULL) AS domains
   FROM guilds g
   LEFT JOIN guild_domains d ON d.guild_id = g.guild_id
