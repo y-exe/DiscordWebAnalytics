@@ -71,13 +71,21 @@ Cloudflare Workers向けの成果物は`npm run cf:build`で生成し、`npm run
 
 月間レポートURLのHTMLは、公開済み月に限り`discord:component-embed`のリンクをサーバー側で出力します。`/ranking/monthly/{year}/{month}/discord-embed`はBotのランキングメッセージと同じ共通描画処理・集計条件を使用します。Botとバックエンドは共通の既定サーバーID`1355073968532619376`、既定ロールID`1503873180362739834`を使用し、追加設定なしで動作します。別の値を使用する場合は、両方の`GUILD_ID`と`KING_ROLE_ID`を同じ値に設定してください。未公開月のJSONは認証済みでも公開しません。Discordの3,000バイト制限を超える場合は順位・氏名を削らず、通常のOpen Graphプレビューへフォールバックします。
 
-Dockerイメージは共有ソースを含めるためリポジトリルートをコンテキストにしてビルドします（例: `docker build -f Bot/Dockerfile .`、`docker build -f backend/Dockerfile .`）。
+## マルチサーバー対応
+
+SaaS型マルチテナント(1つのBot・1つのDBで複数サーバー)へ移行しています。設計と進捗は`docs/multi-guild.md`を参照してください。
+
+- ギルド設定(告知チャンネル・月間発言王ロール・ランキング除外チャンネル)はDBの`guilds`テーブルで管理し、Botの`/setup`コマンド(サーバー管理権限が必要)で変更できます。
+- `GUILD_ID`・`KING_ROLE_ID`・`ANNOUNCE_CHANNEL_ID`・`EXCLUDED_CHANNEL_IDS`(カンマ区切り)は既定ギルドのシード値です。起動時に`guilds`テーブルの未設定列のみを埋め、`/setup`による設定を優先します。
+- 表示名はギルドごとに`guild_members`テーブルへ保存され、ランキングはそのギルドの表示名で集計されます。
+
+Dockerイメージは共有ソースを含めるためリポジトリルートをコンテキストにしてビルドします(例: `docker build -f Bot/Dockerfile .`、`docker build -f backend/Dockerfile .`)。
 
 累計ランキング`/all`もComponent Embedに対応し、`/ranking/total/discord-embed`からBotの`/all`と同じ集計・描画処理で全期間の上位10人を表示します。月間ロールの案内は含めません。
 
 ## データベースのスキーマ変更
 
-月間の発言王ロールは日本時間の前月を対象に、Bot起動時と60秒ごとの確認で更新します。`KING_ROLE_ID`の既定値は`1503873180362739834`です。完了月は`monthly_role_runs`へ記録し、再起動時の重複実行を防ぎます。更新失敗時は完了扱いにせず再試行します。Botには対象ロールより上のロールと「ロールの管理」権限が必要です。月間レポートの共通入口`/month/latest`は、アクセス時の日本時間を基準に最新公開月へリダイレクトします。
+月間の発言王ロールは日本時間の前月を対象に、Bot起動時と60秒ごとの確認で、`guilds`テーブルに`king_role_id`が設定された全ギルドへ更新します。`KING_ROLE_ID`の既定値は`1503873180362739834`です。完了月は`monthly_role_runs`へ記録し、再起動時の重複実行を防ぎます。更新失敗時は完了扱いにせず再試行します。Botには対象ロールより上のロールと「ロールの管理」権限が必要です。月間レポートの共通入口`/month/latest`は、アクセス時の日本時間を基準に最新公開月へリダイレクトします。
 
 PostgreSQLのDDLは`db/migrations/`で管理します。BotやAPI、履歴スキャナーの起動時にはスキーマを変更しません。
 
