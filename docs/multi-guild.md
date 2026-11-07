@@ -153,7 +153,7 @@ CREATE TABLE guild_members (
 |---|---|---|
 | 1 | DB + shared: マイグレーション006〜008、ランキングクエリ・コンポーネントのギルド対応 | ✅ 完了 |
 | 2 | Bot: 全ギルド同期・収集・ランキング・発言王ロール、`/setup` コマンド | ✅ 完了 |
-| 3 | バックエンド: Hostヘッダーによるギルド解決、全ルートのguildフィルタ、キャッシュキー、display_config移行、`/api`パス互換 | 未 |
+| 3 | バックエンド: Hostヘッダーによるギルド解決、全ルートのguildフィルタ、キャッシュキー、display_config移行 | ✅ 完了 |
 | 4 | フロントエンド: 相対パス化、Host解決ヘルパー、`ymkw.top` 脱ハードコード、k3s用Dockerfile | 未 |
 | 5 | Discord OAuth: 中央コールバック + ギルドスコープセッション | 未 |
 | 6 | インフラ (vpsリポジトリ): k3s manifests、ワイルドカード証明書、Nginx stream SNI分岐 + Caddy | 未 |
