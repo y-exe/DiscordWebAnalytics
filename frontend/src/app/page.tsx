@@ -1,5 +1,7 @@
-import type { Metadata } from "next";
-import HomePage from "@/components/HomePage";
+import { permanentRedirect } from "next/navigation";
 
-export const metadata: Metadata = { title: "やまかわてるき | ymkw.top", description: "やまかわてるき鯖の公認WEBダッシュボード。月間レポートと累計ランキングを確認できます。", alternates: { canonical: "/" } };
-export default function Page() { return <HomePage />; }
+export default function Page() {
+  // ダッシュボードのルートは案内ページではなく最新レポートへ誘導する
+  // (案内サイトは home/ として Cloudflare Pages/Workers に別配備する)
+  permanentRedirect("/month/latest");
+}

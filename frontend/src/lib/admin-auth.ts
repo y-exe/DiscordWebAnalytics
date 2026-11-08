@@ -1,4 +1,3 @@
-
 export const ADMIN_COOKIE_NAME = "__Secure-ymkw_admin";
 export const ADMIN_SESSION_MAX_AGE = 60 * 60 * 24;
 const LOGIN_ATTEMPT_WINDOW_MS = 10 * 60 * 1000;
@@ -20,7 +19,8 @@ function bytesToBase64Url(bytes: Uint8Array): string {
 }
 
 function base64UrlToBytes(value: string): Uint8Array<ArrayBuffer> {
-  const padded = value.replaceAll("-", "+").replaceAll("_", "/") + "=".repeat((4 - (value.length % 4)) % 4);
+  const padded =
+    value.replaceAll("-", "+").replaceAll("_", "/") + "=".repeat((4 - (value.length % 4)) % 4);
   const binary = atob(padded);
   return Uint8Array.from(binary, (character) => character.charCodeAt(0));
 }
@@ -37,7 +37,9 @@ function timingSafeEqual(left: string, right: string): boolean {
   return difference === 0;
 }
 
-function parsePasswordHash(value: string): { salt: Uint8Array<ArrayBuffer>; hash: Uint8Array<ArrayBuffer> } | null {
+function parsePasswordHash(
+  value: string,
+): { salt: Uint8Array<ArrayBuffer>; hash: Uint8Array<ArrayBuffer> } | null {
   const match = /^pbkdf2-sha256\$(\d+)\$([A-Za-z0-9_-]+)\$([A-Za-z0-9_-]+)$/u.exec(value);
   if (!match || Number(match[1]) !== PBKDF2_ITERATIONS) return null;
   try {
@@ -49,8 +51,13 @@ function parsePasswordHash(value: string): { salt: Uint8Array<ArrayBuffer>; hash
   }
 }
 
-async function derivePasswordHash(password: string, salt: Uint8Array<ArrayBuffer>): Promise<Uint8Array> {
-  const key = await crypto.subtle.importKey("raw", encoder.encode(password), "PBKDF2", false, ["deriveBits"]);
+async function derivePasswordHash(
+  password: string,
+  salt: Uint8Array<ArrayBuffer>,
+): Promise<Uint8Array> {
+  const key = await crypto.subtle.importKey("raw", encoder.encode(password), "PBKDF2", false, [
+    "deriveBits",
+  ]);
   const bits = await crypto.subtle.deriveBits(
     { name: "PBKDF2", hash: "SHA-256", salt, iterations: PBKDF2_ITERATIONS },
     key,
@@ -72,7 +79,10 @@ async function sign(payload: string, secret: string): Promise<string> {
 }
 
 export function isAdminAuthConfigured(): boolean {
-  return parsePasswordHash(getSecret("ADMIN_PASSWORD_HASH")) !== null && getSecret("ADMIN_SESSION_SECRET").length >= 32;
+  return (
+    parsePasswordHash(getSecret("ADMIN_PASSWORD_HASH")) !== null &&
+    getSecret("ADMIN_SESSION_SECRET").length >= 32
+  );
 }
 
 export function canAttemptAdminLogin(clientKey: string, now = Date.now()): boolean {
@@ -86,9 +96,10 @@ export function canAttemptAdminLogin(clientKey: string, now = Date.now()): boole
 
 export function recordAdminLoginFailure(clientKey: string, now = Date.now()): void {
   const current = loginAttempts.get(clientKey);
-  const next = !current || current.resetAt <= now
-    ? { count: 1, resetAt: now + LOGIN_ATTEMPT_WINDOW_MS }
-    : { count: current.count + 1, resetAt: current.resetAt };
+  const next =
+    !current || current.resetAt <= now
+      ? { count: 1, resetAt: now + LOGIN_ATTEMPT_WINDOW_MS }
+      : { count: current.count + 1, resetAt: current.resetAt };
   loginAttempts.set(clientKey, next);
 
   if (loginAttempts.size > 5000) {
@@ -105,7 +116,10 @@ export function clearAdminLoginFailures(clientKey: string): void {
 export async function verifyAdminPassword(password: string): Promise<boolean> {
   const stored = parsePasswordHash(getSecret("ADMIN_PASSWORD_HASH"));
   if (!stored || password.length === 0 || password.length > 256) return false;
-  return timingSafeEqual(bytesToBase64Url(await derivePasswordHash(password, stored.salt)), bytesToBase64Url(stored.hash));
+  return timingSafeEqual(
+    bytesToBase64Url(await derivePasswordHash(password, stored.salt)),
+    bytesToBase64Url(stored.hash),
+  );
 }
 
 export async function createAdminSession(now = Date.now()): Promise<string> {
@@ -117,7 +131,10 @@ export async function createAdminSession(now = Date.now()): Promise<string> {
   return `${payload}.${await sign(payload, secret)}`;
 }
 
-export async function verifyAdminSession(token: string | undefined, now = Date.now()): Promise<boolean> {
+export async function verifyAdminSession(
+  token: string | undefined,
+  now = Date.now(),
+): Promise<boolean> {
   if (!token) return false;
   const secret = getSecret("ADMIN_SESSION_SECRET");
   if (secret.length < 32) return false;

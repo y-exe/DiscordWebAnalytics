@@ -5,7 +5,15 @@ export function latestPublishedReportPath(now = new Date()): string {
 }
 
 export function isPublishedReportMonth(year: number, month: number, now = new Date()): boolean {
-  if (!Number.isInteger(year) || year < 2020 || year > 2100 || !Number.isInteger(month) || month < 1 || month > 12) return false;
+  if (
+    !Number.isInteger(year) ||
+    year < 2020 ||
+    year > 2100 ||
+    !Number.isInteger(month) ||
+    month < 1 ||
+    month > 12
+  )
+    return false;
   const [, , latestYear, latestMonth] = latestPublishedReportPath(now).split("/");
   return year * 12 + month <= Number(latestYear) * 12 + Number(latestMonth);
 }

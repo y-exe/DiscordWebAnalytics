@@ -1,3 +1,4 @@
-import { NextResponse } from "next/server";
-
-export function GET(request: Request) { return NextResponse.redirect(new URL("/", request.url), 308); }
+export function GET() {
+  // 相対Locationで返す (プロキシ背後でスキーマ/ホストが変わるため)
+  return new Response(null, { status: 308, headers: { Location: "/" } });
+}

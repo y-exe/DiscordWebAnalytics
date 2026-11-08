@@ -22,3 +22,5 @@ db/backups/*.sql
 
 **/.turbo/
 **/*.tsbuildinfo
+.dev-*.log
+frontend/.env.local

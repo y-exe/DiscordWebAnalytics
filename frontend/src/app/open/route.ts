@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 
 export function GET(request: Request) {
-  const source = new URL(request.url);
-  return NextResponse.redirect(new URL(`/all${source.search}`, source), 301);
+  // 相対Locationで返す (プロキシ背後でスキーマ/ホストが変わるため)
+  const incoming = new URL(request.url);
+  return new Response(null, {
+    status: 301,
+    headers: { Location: `/all${incoming.search}` },
+  });
 }

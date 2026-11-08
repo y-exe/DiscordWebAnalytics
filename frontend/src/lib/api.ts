@@ -1,96 +1,119 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL || (process.env.NODE_ENV === "development" ? "" : "https://api.ymkw.top");
-const SSR_API_URL = process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || "https://api.ymkw.top";
+const SAME_ORIGIN = process.env.NEXT_PUBLIC_SAME_ORIGIN === "true";
+const API_URL = SAME_ORIGIN
+  ? "/api"
+  : process.env.NEXT_PUBLIC_API_URL ||
+    (process.env.NODE_ENV === "development" ? "" : "https://api.ymkw.top");
+const SSR_API_URL = SAME_ORIGIN
+  ? process.env.API_URL || "http://ymkw-backend:8070"
+  : process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || "https://api.ymkw.top";
 
-interface FetchAPIOptions extends Omit<RequestInit, 'signal'> {
-    timeout?: number;
-    retries?: number;
+interface FetchAPIOptions extends Omit<RequestInit, "signal"> {
+  timeout?: number;
+  retries?: number;
 }
 
 export class APIError extends Error {
-    status: number;
-    url: string;
+  status: number;
+  url: string;
 
-    constructor(message: string, status: number, url: string) {
-        super(message);
-        this.name = "APIError";
-        this.status = status;
-        this.url = url;
-    }
+  constructor(message: string, status: number, url: string) {
+    super(message);
+    this.name = "APIError";
+    this.status = status;
+    this.url = url;
+  }
 }
 
-export async function fetchAPI(
-    path: string,
-    options: FetchAPIOptions = {}
-): Promise<Response> {
-    const { retries = 2, ...fetchOptions } = options;
-    const isServer = typeof window === "undefined";
-    const baseUrl = isServer ? SSR_API_URL : API_URL;
-    const url = path.startsWith("http") ? path : `${baseUrl}${path}`;
-    const headers: Record<string, string> = {
-        ...(isServer ? { Referer: "https://ymkw.top/" } : {}),
-        ...((fetchOptions.headers as Record<string, string>) || {}),
-    };
+/** SSR時に元リクエストのホストを取得し、バックエンドのギルド解決に渡す */
+async function resolveForwardedHost(): Promise<string | null> {
+  if (typeof window !== "undefined") return null;
+  try {
+    const { headers } = await import("next/headers");
+    const incoming = await headers();
+    return incoming.get("x-forwarded-host") ?? incoming.get("host");
+  } catch {
+    return null;
+  }
+}
 
-    let lastError: Error | null = null;
+export async function fetchAPI(path: string, options: FetchAPIOptions = {}): Promise<Response> {
+  const { retries = 2, ...fetchOptions } = options;
+  const isServer = typeof window === "undefined";
+  const baseUrl = isServer ? SSR_API_URL : API_URL;
+  const url = path.startsWith("http") ? path : `${baseUrl}${path}`;
+  const forwardedHost = isServer ? await resolveForwardedHost() : null;
+  const headers: Record<string, string> = {
+    ...(isServer && !SAME_ORIGIN ? { Referer: "https://ymkw.top/" } : {}),
+    ...(forwardedHost ? { "x-forwarded-host": forwardedHost } : {}),
+    ...((fetchOptions.headers as Record<string, string>) || {}),
+  };
 
-    for (let attempt = 0; attempt <= retries; attempt++) {
-        try {
-            const res = await fetch(url, {
-                ...fetchOptions,
-                headers,
-                credentials: fetchOptions.credentials ?? "include",
-            });
+  let lastError: Error | null = null;
 
-            if (res.ok || res.status === 404) return res;
-            const apiError = new APIError(`HTTP ${res.status}`, res.status, url);
-            lastError = apiError;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const res = await fetch(url, {
+        ...fetchOptions,
+        headers,
+        credentials: fetchOptions.credentials ?? "include",
+      });
 
-            if (res.status === 429 || res.status >= 500) {
-                if (attempt < retries) {
-                    await delay(1000 * Math.pow(2, attempt));
-                    continue;
-                }
-            }
+      if (res.ok || res.status === 404) return res;
+      const apiError = new APIError(`HTTP ${res.status}`, res.status, url);
+      lastError = apiError;
 
-            throw apiError;
-        } catch (err) {
-            if (!(err instanceof APIError)) {
-                lastError = new APIError(err instanceof Error ? err.message : "Network failure", 0, url);
-                if (err instanceof Error) {
-                    lastError.name = err.name;
-                }
-            } else {
-                lastError = err;
-            }
-
-            if (attempt < retries) {
-                await delay(1000 * Math.pow(2, attempt));
-                continue;
-            }
+      if (res.status === 429 || res.status >= 500) {
+        if (attempt < retries) {
+          await delay(1000 * Math.pow(2, attempt));
+          continue;
         }
-    }
+      }
 
-    if (lastError) {
-        redirectToErrorPage(lastError, isServer);
-        throw lastError;
+      throw apiError;
+    } catch (err) {
+      if (!(err instanceof APIError)) {
+        lastError = new APIError(err instanceof Error ? err.message : "Network failure", 0, url);
+        if (err instanceof Error) {
+          lastError.name = err.name;
+        }
+      } else {
+        lastError = err;
+      }
+
+      if (attempt < retries) {
+        await delay(1000 * Math.pow(2, attempt));
+        continue;
+      }
     }
-    throw new Error("Fetch failed after retries");
+  }
+
+  if (lastError) {
+    redirectToErrorPage(lastError, isServer);
+    throw lastError;
+  }
+  throw new Error("Fetch failed after retries");
 }
 
 function redirectToErrorPage(error: Error, isServer: boolean): void {
-    if (isServer || typeof window === "undefined" || !(error instanceof APIError) || error.status < 500) return;
-    if (window.location.pathname === "/error") return;
+  if (
+    isServer ||
+    typeof window === "undefined" ||
+    !(error instanceof APIError) ||
+    error.status < 500
+  )
+    return;
+  if (window.location.pathname === "/error") return;
 
-    const params = new URLSearchParams({
-        code: String(error.status),
-        msg: error.message || "Bad Gateway",
-        url: error.url,
-    });
-    window.location.assign(`/error?${params.toString()}`);
+  const params = new URLSearchParams({
+    code: String(error.status),
+    msg: error.message || "Bad Gateway",
+    url: error.url,
+  });
+  window.location.assign(`/error?${params.toString()}`);
 }
 
 function delay(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export { API_URL };

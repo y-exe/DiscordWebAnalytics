@@ -3,11 +3,20 @@ import { renderCloudflareTemplate } from "./cloudflare-template";
 export const dynamic = "force-dynamic";
 
 function escapeHtml(value: string) {
-  return value.replace(/[&<>'"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[character] ?? character);
+  return value.replace(
+    /[&<>'"]/g,
+    (character) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[character] ??
+      character,
+  );
 }
 
 function rayId() {
-  return Array.from(crypto.getRandomValues(new Uint8Array(8)), (byte) => byte.toString(16).padStart(2, "0")).join("").toUpperCase();
+  return Array.from(crypto.getRandomValues(new Uint8Array(8)), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  )
+    .join("")
+    .toUpperCase();
 }
 
 export async function GET(request: Request) {
@@ -41,5 +50,7 @@ export async function GET(request: Request) {
     CLIENT_IP: clientIp,
   });
 
-  return new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" } });
+  return new Response(html, {
+    headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" },
+  });
 }
