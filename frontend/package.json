@@ -52,7 +52,7 @@
     "@types/node": "^26.6.3",
     "@types/pg": "^8.23.1",
     "typescript": "^5.8.3",
-    "wrangler": "^4.147.0"
+    "wrangler": "^4.158.0"
   },
   "overrides": {
     "sharp": "^0.35.5"
