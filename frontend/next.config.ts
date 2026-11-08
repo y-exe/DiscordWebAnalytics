@@ -23,12 +23,17 @@ const nextConfig: NextConfig = {
     ];
   },
   async rewrites() {
-    // 同一オリジン運用ではmiddleware.tsがAPIパスを内部バックエンドへ転送する
+    // 同一オリジン運用ではエッジ (Caddy) が /api/* をバックエンドへ振り分けるためrewrites不要
     if (process.env.NEXT_PUBLIC_SAME_ORIGIN === "true") return [];
-    return ["/channels", "/users/:path*", "/ranking/:path*", "/stats/:path*"].map((source) => ({
-      source,
-      destination: `https://api.ymkw.top${source}`,
-    }));
+    const legacySources = ["/channels", "/users/:path*", "/ranking/:path*", "/stats/:path*"];
+    return [
+      ...legacySources.map((source) => ({
+        source,
+        destination: `https://api.ymkw.top${source}`,
+      })),
+      // 同一オリジン形式の /api/* も移行期のWorkersで動くようにする (プレフィックスは剥がす)
+      { source: "/api/:path*", destination: "https://api.ymkw.top/:path*" },
+    ];
   },
 };
 

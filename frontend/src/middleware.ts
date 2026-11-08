@@ -15,18 +15,21 @@ export function middleware(request: NextRequest) {
   if (!API_PROXY_TARGET) return NextResponse.next();
 
   const { pathname, search } = request.nextUrl;
-  if (!isApiPath(pathname)) return NextResponse.next();
+  // /api/* はプレフィックスを剥がしてバックエンドへ (本番ではエッジが直接振り分けるため通常到達しない・開発用)
+  const isPrefixed = pathname === "/api" || pathname.startsWith("/api/");
+  if (!isPrefixed && !isApiPath(pathname)) return NextResponse.next();
 
   const host = request.headers.get("x-forwarded-host") ?? request.headers.get("host") ?? "";
   const headers = new Headers(request.headers);
   headers.set("x-forwarded-host", host);
   headers.set("x-forwarded-proto", request.headers.get("x-forwarded-proto") ?? "https");
   headers.delete("host");
-  return NextResponse.rewrite(new URL(`${pathname}${search}`, API_PROXY_TARGET), {
+  const backendPath = isPrefixed ? pathname.replace(/^\/api/, "") || "/" : pathname;
+  return NextResponse.rewrite(new URL(`${backendPath}${search}`, API_PROXY_TARGET), {
     request: { headers },
   });
 }
 
 export const config = {
-  matcher: ["/channels/:path*", "/users/:path*", "/ranking/:path*", "/stats/:path*"],
+  matcher: ["/api/:path*", "/channels/:path*", "/users/:path*", "/ranking/:path*", "/stats/:path*"],
 };

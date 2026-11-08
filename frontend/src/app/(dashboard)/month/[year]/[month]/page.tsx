@@ -43,13 +43,14 @@ export default async function MonthPage({ params }: PageProps) {
   )
     notFound();
   const baseUrl = await getGuildBaseUrl();
+  const embedBase = baseUrl ? `${baseUrl}/api` : "https://api.ymkw.top";
   return (
     <>
       {isPublishedReportMonth(targetYear, targetMonth) && (
         <link
           rel="discord:component-embed"
           type="application/json"
-          href={`${baseUrl ?? "https://api.ymkw.top"}/ranking/monthly/${targetYear}/${targetMonth}/discord-embed`}
+          href={`${embedBase}/ranking/monthly/${targetYear}/${targetMonth}/discord-embed`}
         />
       )}
       <AdminMonthGate year={year} month={month} />

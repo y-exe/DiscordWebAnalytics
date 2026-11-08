@@ -5,8 +5,10 @@ export interface GuildContextInfo {
   name: string;
   iconUrl: string | null;
   isDefault: boolean;
-  /** ダッシュボードの絶対URL基点 (例: https://ymkw.top)。未登録ならnull */
+  /** ダッシュボードの代表ドメインのURL基点 (例: https://analytics.ymkw.top)。未登録ならnull */
   domain: string | null;
+  /** 登録済みドメイン一覧 */
+  domains: string[];
 }
 
 const FALLBACK: GuildContextInfo = {
@@ -15,6 +17,7 @@ const FALLBACK: GuildContextInfo = {
   iconUrl: null,
   isDefault: true,
   domain: null,
+  domains: [],
 };
 
 const CACHE_TTL_MS = 30_000;
@@ -53,6 +56,7 @@ export async function getGuildContext(): Promise<GuildContextInfo> {
         iconUrl: body.iconUrl ?? null,
         isDefault: body.isDefault !== false,
         domain: body.domain ?? null,
+        domains: Array.isArray(body.domains) ? body.domains.map(String) : [],
       };
     }
   } catch {
@@ -64,12 +68,16 @@ export async function getGuildContext(): Promise<GuildContextInfo> {
   return value;
 }
 
-/** ダッシュボードの絶対URL基点 (ドメイン未解決時はリクエストホスト、それも無ければnull) */
+/**
+ * ダッシュボードの絶対URL基点 (canonical・OGP・埋め込みリンク用)。
+ * 配信中のホストがギルドの登録ドメインならそれを優先し、
+ * そうでなければ代表ドメイン、未解決ならnull。
+ */
 export async function getGuildBaseUrl(): Promise<string | null> {
   const [guild, host] = await Promise.all([getGuildContext(), requestHost()]);
-  if (guild.domain) return guild.domain;
-  const normalized = host?.split(",")[0]?.trim();
-  return normalized ? `https://${normalized}` : null;
+  const normalized = host?.split(",")[0]?.trim().toLowerCase();
+  if (normalized && guild.domains.includes(normalized)) return `https://${normalized}`;
+  return guild.domain;
 }
 
 export { FALLBACK as FALLBACK_GUILD_CONTEXT };

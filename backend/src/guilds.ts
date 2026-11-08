@@ -22,6 +22,8 @@ export interface GuildContext {
   excludedChannelIds: string[];
   displayConfig: GuildDisplayConfig;
   domains: string[];
+  /** ダッシュボードの代表ドメイン (is_primary = TRUE) */
+  primaryDomains: string[];
 }
 
 interface GuildRow {
@@ -32,6 +34,7 @@ interface GuildRow {
   excluded_channel_ids: unknown;
   display_config: unknown;
   domains: string[] | null;
+  primary_domains: string[] | null;
 }
 
 function parseId(value: unknown): string | null {
@@ -70,6 +73,7 @@ function toGuildContext(row: GuildRow): GuildContext {
     excludedChannelIds: parseIdArray(row.excluded_channel_ids),
     displayConfig: parseDisplayConfig(row.display_config),
     domains: Array.isArray(row.domains) ? row.domains.map(String) : [],
+    primaryDomains: Array.isArray(row.primary_domains) ? row.primary_domains.map(String) : [],
   };
 }
 
@@ -89,7 +93,8 @@ export function normalizeHost(raw: string | undefined | null): string {
 
 const GUILD_BY_ID_SQL = `
   SELECT g.guild_id, g.name, g.icon_url, g.king_role_id, g.excluded_channel_ids, g.display_config,
-         array_agg(d.domain ORDER BY d.domain) FILTER (WHERE d.domain IS NOT NULL) AS domains
+         array_agg(d.domain ORDER BY d.domain) FILTER (WHERE d.domain IS NOT NULL) AS domains,
+         array_agg(d.domain ORDER BY d.domain) FILTER (WHERE d.is_primary AND d.domain IS NOT NULL) AS primary_domains
   FROM guilds g
   LEFT JOIN guild_domains d ON d.guild_id = g.guild_id
   WHERE g.guild_id = $1
@@ -144,9 +149,13 @@ export async function resolveGuildByHost(
   return guild;
 }
 
-/** ギルドのダッシュボードURL基点を組み立てる (ドメイン未設定ならnull) */
+function preferApex(domains: string[]): string | null {
+  const apex = domains.find((entry) => !entry.startsWith("www."));
+  return apex ?? domains[0] ?? null;
+}
+
+/** ダッシュボードの絶対URL基点を組み立てる (代表ドメイン優先、未設定ならnull) */
 export function dashboardBaseUrl(guild: GuildContext): string | null {
-  const apex = guild.domains.find((entry) => !entry.startsWith("www."));
-  const domain = apex ?? guild.domains[0];
+  const domain = preferApex(guild.primaryDomains) ?? preferApex(guild.domains);
   return domain ? `https://${domain}` : null;
 }

@@ -9,6 +9,7 @@
     "includes": [
       "**",
       "!**/node_modules",
+      "!home",
       "!**/.next",
       "!**/.open-next",
       "!**/.wrangler",

@@ -421,6 +421,7 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
         iconUrl: guild.iconUrl,
         isDefault: guild.guildId === cfg.guildId,
         domain: dashboardBaseUrl(guild),
+        domains: guild.domains,
       },
       200,
       { "Cache-Control": "public, max-age=300" },

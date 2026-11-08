@@ -9,6 +9,8 @@ export interface GuildConfigRow {
   kingRoleId: string | null;
   excludedChannelIds: string[];
   domains: string[];
+  /** ダッシュボードの代表ドメイン (is_primary = TRUE) */
+  primaryDomains: string[];
 }
 
 export interface GuildConfigWithDisplay extends GuildConfigRow {
@@ -23,6 +25,7 @@ interface GuildRow {
   excluded_channel_ids: unknown;
   display_config: unknown;
   domains: string[] | null;
+  primary_domains: string[] | null;
 }
 
 function normalizeId(value: string | bigint | null | undefined): string | null {
@@ -47,13 +50,15 @@ function toGuildRow(row: GuildRow): GuildConfigWithDisplay {
     excludedChannelIds: normalizeIds(row.excluded_channel_ids),
     displayConfig: (row.display_config as Record<string, unknown> | null) ?? null,
     domains: Array.isArray(row.domains) ? row.domains : [],
+    primaryDomains: Array.isArray(row.primary_domains) ? row.primary_domains : [],
   };
 }
 
 const GUILD_SELECT_SQL = `
   SELECT g.guild_id, g.name, g.announce_channel_id, g.king_role_id,
          g.excluded_channel_ids, g.display_config,
-         array_agg(d.domain ORDER BY d.domain) FILTER (WHERE d.domain IS NOT NULL) AS domains
+         array_agg(d.domain ORDER BY d.domain) FILTER (WHERE d.domain IS NOT NULL) AS domains,
+         array_agg(d.domain ORDER BY d.domain) FILTER (WHERE d.is_primary AND d.domain IS NOT NULL) AS primary_domains
   FROM guilds g
   LEFT JOIN guild_domains d ON d.guild_id = g.guild_id
   WHERE g.guild_id = $1
@@ -149,6 +154,7 @@ export interface GuildAnnounceRow {
   kingRoleId: string | null;
   excludedChannelIds: string[];
   domains: string[];
+  primaryDomains: string[];
 }
 
 /** 月間ランキングを告知するチャンネルが設定されたアクティブギルド一覧 */
@@ -156,7 +162,8 @@ export async function listAnnounceGuilds(pool: Pool): Promise<GuildAnnounceRow[]
   const { rows } = await pool.query(
     `
     SELECT g.guild_id, g.announce_channel_id, g.king_role_id, g.excluded_channel_ids,
-           array_agg(d.domain ORDER BY d.domain) FILTER (WHERE d.domain IS NOT NULL) AS domains
+           array_agg(d.domain ORDER BY d.domain) FILTER (WHERE d.domain IS NOT NULL) AS domains,
+           array_agg(d.domain ORDER BY d.domain) FILTER (WHERE d.is_primary AND d.domain IS NOT NULL) AS primary_domains
     FROM guilds g
     LEFT JOIN guild_domains d ON d.guild_id = g.guild_id
     WHERE g.announce_channel_id IS NOT NULL AND g.is_active
@@ -173,6 +180,7 @@ export async function listAnnounceGuilds(pool: Pool): Promise<GuildAnnounceRow[]
         kingRoleId: normalizeId(row.king_role_id as string | bigint),
         excludedChannelIds: normalizeIds(row.excluded_channel_ids),
         domains: Array.isArray(row.domains) ? row.domains : [],
+        primaryDomains: Array.isArray(row.primary_domains) ? row.primary_domains : [],
       },
     ];
   });
@@ -183,10 +191,17 @@ export function primaryGuildId(): string {
   return GUILD_ID;
 }
 
-/** ギルドのダッシュボードURLを組み立てる (ドメイン未設定ならnull) */
-export function dashboardUrl(config: Pick<GuildConfigRow, "domains">, path: string): string | null {
-  const apex = config.domains.find((entry) => !entry.startsWith("www."));
-  const domain = apex ?? config.domains[0];
+function preferApex(domains: string[]): string | null {
+  const apex = domains.find((entry) => !entry.startsWith("www."));
+  return apex ?? domains[0] ?? null;
+}
+
+/** ギルドのダッシュボードURLを組み立てる (代表ドメイン優先、ドメイン未設定ならnull) */
+export function dashboardUrl(
+  config: Pick<GuildConfigRow, "domains" | "primaryDomains">,
+  path: string,
+): string | null {
+  const domain = preferApex(config.primaryDomains) ?? preferApex(config.domains);
   if (!domain) return null;
   return `https://${domain}${path}`;
 }

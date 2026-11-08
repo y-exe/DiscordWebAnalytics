@@ -6,7 +6,7 @@ import Dashboard from "./Dashboard";
 
 const ADMIN_API_URL =
   process.env.NEXT_PUBLIC_SAME_ORIGIN === "true"
-    ? ""
+    ? "/api"
     : process.env.NEXT_PUBLIC_ADMIN_API_URL || "https://api.ymkw.top";
 
 function currentJstMonth() {

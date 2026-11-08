@@ -29,7 +29,7 @@ export default async function AllPage() {
       <link
         rel="discord:component-embed"
         type="application/json"
-        href={`${baseUrl ?? "https://api.ymkw.top"}/ranking/total/discord-embed`}
+        href={`${baseUrl ? `${baseUrl}/api` : "https://api.ymkw.top"}/ranking/total/discord-embed`}
       />
       <AllTimeDashboard channelId={null} userId={null} />
     </>
