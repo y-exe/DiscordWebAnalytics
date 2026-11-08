@@ -143,8 +143,11 @@ export function getClientIp(
   cfHeader: string | undefined,
   trustCloudflareProxy: boolean,
   cidrs: CidrRange[],
+  trustedPeer = false,
 ): string {
-  if (trustCloudflareProxy && isTrustedProxy(peerIp, cidrs)) {
+  // trustedPeer: Next.jsマウント経由でXFFチェーンの直近ピアが信頼エッジ
+  // (VPS Nginx/Caddy) と検証された場合のバイパス。peerIpはXFF先頭=実クライアント。
+  if (trustCloudflareProxy && (trustedPeer || isTrustedProxy(peerIp, cidrs))) {
     const cloudflareIp = (cfHeader ?? "").trim();
     if (cloudflareIp) {
       try {

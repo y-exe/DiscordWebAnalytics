@@ -17,6 +17,7 @@ const { SafeDiskCache } = await import("../src/safeCache");
 const adminAuth = await import("../src/adminAuth");
 const db = await import("../src/db");
 const { createApp, PUBLIC_PATHS } = await import("../src/api");
+const { stripApiPrefix, deriveMountedRequestEnv } = await import("../src/runtime");
 
 type AppDeps = Parameters<typeof createApp>[0];
 
@@ -547,4 +548,75 @@ test("パブリックパスと書き込みメソッドの保護", async () => {
   } finally {
     await cleanup();
   }
+});
+
+test("/apiリクエストはプレフィックスを剥がしてHonoルートへ届く (Next.jsマウント契約)", async () => {
+  const cfg = await config.loadConfig();
+  const pool = withGuildLookup(
+    {
+      query: async () => ({ rows: [{ user_id: "123", count: 42, display_name: "利用者" }] }),
+    } as unknown as Pool,
+    { domains: { "guild-one.example": "1355073968532619376" } },
+  );
+  const { app, cleanup } = await buildTestApp({ config: cfg, getPool: () => pool });
+  try {
+    // 別のリクエストでも参照できるようテンプレート文字列で組み立てる
+    const request = new Request(`https://gateway/api/guild-context`, {
+      headers: { "x-forwarded-host": "guild-one.example" },
+    });
+    const stripped = stripApiPrefix(request);
+    assert.equal(new URL(stripped.url).pathname, "/guild-context");
+    // ヘッダー (x-forwarded-host) は剥がし後も保持され、ギルド解決が機能する
+    assert.equal(stripped.headers.get("x-forwarded-host"), "guild-one.example");
+    const response = await app.fetch(stripped, { peerIp: "127.0.0.1" });
+    assert.equal(response.status, 200);
+    const payload = (await response.json()) as {
+      guildId: string;
+      isDefault: boolean;
+      domain: string;
+    };
+    assert.equal(payload.guildId, "1355073968532619376");
+    assert.equal(payload.isDefault, true);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("/apiプレフィックスの剥がしはエッジケースでも安全", async () => {
+  // /api 直下はルート "/" 相当になる
+  assert.equal(new URL(stripApiPrefix(new Request("https://x/api")).url).pathname, "/");
+  // /api/ 直下もルート "/" 相当になる
+  assert.equal(new URL(stripApiPrefix(new Request("https://x/api/")).url).pathname, "/");
+  // 対象外のパスは同じRequestオブジェクトがそのまま返る
+  const page = new Request("https://x/month/latest");
+  assert.equal(stripApiPrefix(page), page);
+});
+
+test("マウント経由のピア解決: 信頼エッジ経由のみCFヘッダーとXFF先頭を信用する", async () => {
+  // CF → VPS Nginx → Traefik: XFF末尾が信頼エッジなら先頭を実クライアントとする
+  const trustedRequest = new Request("https://x/api/health", {
+    headers: { "x-forwarded-for": "203.0.113.5, 173.245.48.3, 10.77.0.1" },
+  });
+  assert.deepEqual(deriveMountedRequestEnv(trustedRequest), {
+    peerIp: "203.0.113.5",
+    trustedPeer: true,
+  });
+  // trustedPeer時はCIDR外のピアでもCF-Connecting-IPを採用する
+  assert.equal(config.getClientIp("203.0.113.5", "203.0.113.7", true, [], true), "203.0.113.7");
+  // CFなしでエッジ維持ならXFF先頭へフォールバック
+  assert.equal(config.getClientIp("203.0.113.5", undefined, true, [], true), "203.0.113.5");
+  // LAN直叩き (Traefik直拍) は末尾ピアを実ピアとしCFヘッダーは信頼しない
+  const lanRequest = new Request("https://x/api/health", {
+    headers: { "x-forwarded-for": "1.2.3.4, 10.77.0.1, 192.168.1.10" },
+  });
+  assert.deepEqual(deriveMountedRequestEnv(lanRequest), {
+    peerIp: "192.168.1.10",
+    trustedPeer: false,
+  });
+  assert.equal(config.getClientIp("192.168.1.10", "6.6.6.6", true, [], false), "192.168.1.10");
+  // XFFなし (プローブやセルフ呼び出し)
+  assert.deepEqual(deriveMountedRequestEnv(new Request("https://x/api/health")), {
+    peerIp: "unknown",
+    trustedPeer: false,
+  });
 });

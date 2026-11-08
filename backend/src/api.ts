@@ -58,7 +58,8 @@ export interface AppDeps {
   getPeerIp?: (c: Context) => string;
 }
 
-type AppEnv = { Bindings: { peerIp?: string } };
+type AppEnv = { Bindings: { peerIp?: string; trustedPeer?: boolean } };
+export type { AppEnv };
 
 function jsonResponse(body: unknown, status = 200, headers?: Record<string, string>): Response {
   const responseHeaders = new Headers({ "Content-Type": "application/json" });
@@ -335,6 +336,7 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
       c.req.header("CF-Connecting-IP"),
       cfg.trustCloudflareProxy,
       cfg.cloudflareTrustedProxyCidrs,
+      Boolean(c.env?.trustedPeer),
     );
 
     const blockKey = `blocked:${clientIp}`;

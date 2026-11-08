@@ -16,6 +16,10 @@
   - Workers用の `cf:build` / `deploy` は移行完了後に引退
 - **フロントとAPIを同一オリジンで提供する** (`https://{domain}/api/*` → バックエンド)
   - CORS・サードパーティCookie問題が消滅し、Discord OAuthのセッションCookieが全ドメインで機能する
+- **APIはHonoのままNext.jsプロセスへマウントし、1コンテナに統合する** (2026-11-08決定)
+  - `frontend/src/app/api/[[...route]]/route.ts` が `backend/src/api.ts` の `createApp()` を呼ぶ。Honoのコード・テスト・セキュリティ実装は無変更
+  - エッジの `/api/*` 振り分けと `ymkw-backend` Deployment は不要になる (切り替え時に引退)
+  - Workers移行期の `cf:build` は `bun:sqlite` を `frontend/stubs/bun-sqlite.cjs` へ外部化 (externals差し替え) して通す。Workers上では `/api/*` がrewritesで転送されるためマウントルートは実行されない
 - **ギルド解決はHostヘッダーで行う** (独自ヘッダーは使わない)
   - DNSでしか作れないため偽装不可。エッジ (Caddy/Nginx) がHostを保持したままバックエンドへ転送する
 - 本番インフラの正本は `vps` リポジトリ (`yexeserver:~/vps`)。トポロジは VPS Nginx (TLSエッジ) → WireGuard → k3s Traefik → アプリ
@@ -28,8 +32,7 @@ VPS: Nginx (stream SNI分岐 / 後述フェーズ6)
         └─ マルチテナント系 (*.a.yexe.xyz + 登録済み独自ドメイン) → Caddy (on-demand TLS)
                 │ WireGuard (10.77.0.2:80, Host保持)
         k3s Traefik
-                ├─ /api/* → ymkw-backend (Hono・既存)
-                └─ /*    → ymkw-frontend (Next.js SSR・新規)
+                └─ /**  (SSR + /api/* Honoマウント) → ymkw-frontend (統合コンテナ)
 
 ymkw.top (案内ホームページ)
         └─ Cloudflare Pages/Workers: home/ 静的サイト (ダッシュボードを含まない)
@@ -114,11 +117,22 @@ CREATE TABLE guild_members (
 - キャッシュキーに guildId を含める。ウォームループは「ドメイン設定のあるアクティブギルド」をループ
 - `allowedOrigins` は同一オリジン化により縮小 (過渡期はymkw.top系を維持)
 
+### 統合コンテナ (Honoマウント)
+
+- バックエンド配線は `backend/src/runtime.ts` (`createBackendRuntime()`) に集約: loadConfig → pgプール → ログイン制限初期化 → SafeDiskCache → `createApp()`。プロセス内シングルトンで再構築しない
+- `backend/src/main.ts` (Bun.serve) は過渡期の単独起動用として無変更のまま残す。k3s移行完了後に削除してよい
+- SSRは `API_URL=http://127.0.0.1:4321/api` (セルフループバック、`/api` プレフィックス付き) でAPIを呼ぶ。`x-forwarded-host` によりギルド解決は元ページのHostで行われる
+- `peerIp` はNextのroute handlerではソケットIPが取得できないため **X-Forwarded-For の末尾** (直近プロキシが見た直接ピア) を渡す。DNS-only独自ドメイン経由のレート制限品位の整理はフェーズ6 (エッジ構築時) に併せて実施
+- ウォームループは `frontend/src/instrumentation.ts` が同一オリジン運用 (`NEXT_PUBLIC_SAME_ORIGIN=true`) かつnodejsランタイムのときに起動
+- 統合コンテナには `DB_DSN` / `API_SECRET` / `ADMIN_SESSION_SECRET` / `ADMIN_PASSWORD_HASH` をk8s Secret等で与える (`backend/.env` は存在しないためprocess.envで読む)
+- next.config: `BUILD_STANDALONE=true` 時は `output: standalone` かつ `outputFileTracingRoot` = monorepoルート (standaloneに `frontend/server.js` とトレースされた `backend/` が並ぶ)。WorkersビルドはOpenNextがアプリ相対レイアウトを前提とするためアプリ配下に固定
+
 ### 負荷対策
 
 - **公開済み月のページ・APIレスポンスは不変データ** → `s-maxage` / Next.js fetch cache で全面キャッシュ
 - 当月 (未公開) のみSSR/DBクエリが走る。Bot起動時のウォームループで当月分を温める
-- SSRコンテナのメモリ目安は 300〜500MB。k3sの `apps` ネームスペースに追加 (NetworkPolicyの許可リスト更新が必要)
+- 統合コンテナ (SSR + API + SQLiteディスクキャッシュ) のメモリ目安は 500〜800MB。k3sの `apps` ネームスペースに追加 (NetworkPolicyのDB許可リストは `ymkw-frontend` を対象に更新)
+- SSRからのAPIセルフ呼び出しはループバック経由でバックエンドのレート制限バケットを共有する (現行のPod単位共有と同品位)
 
 ## サブドメイン (フェーズ7)
 
@@ -164,6 +178,7 @@ CREATE TABLE guild_members (
 | 3 | バックエンド: Hostヘッダーによるギルド解決、全ルートのguildフィルタ、キャッシュキー、display_config移行 | ✅ 完了 |
 | 4 | フロントエンド: 相対パス化、Host解決ヘルパー、`ymkw.top` 脱ハードコード、k3s用Dockerfile | ✅ 完了 |
 | 4.5 | ホームページ分離: `home/` 静的サイト (Cloudflare配信)、ダッシュボード `/` を `/month/latest` へリダイレクト、`analytics.ymkw.top` 登録 (009) | ✅ 完了 |
+| 4.6 | API統合: HonoをNextにマウント (`/api/[[...route]]`)、`backend/src/runtime.ts`、Workersビルドのbun:sqliteスタブ、standalone次第で1コンテナ化 | ✅ 完了 |
 | 5 | Discord OAuth: 中央コールバック + ギルドスコープセッション | 未 |
 | 6 | インフラ (vpsリポジトリ): k3s manifests、ワイルドカード証明書、Nginx stream SNI分岐 + Caddy | 未 |
 | 7 | ドメイン登録フロー: `/setup subdomain` (招待コード)、失効チェッカー、`/setup domain` + ask エンドポイント | 未 |
@@ -171,6 +186,6 @@ CREATE TABLE guild_members (
 ## デプロイ順序と移行
 
 1. マイグレーション適用 (`cd db && bun run migrate`) → アプリのデプロイ前に必ず実行
-2. Bot → バックエンド → フロントエンドの順で更新
+2. Bot → バックエンド (`backend/src/main.ts`、従来どおり別Deployment) → フロントエンドの順で更新。k3s移行完了後は統合コンテナが両者を置き、`ymkw-backend` Deploymentと `main.ts` は引退
 3. `ymkw.top` はWorkers (現行) とk3s (新) を並行稼働でき、DNS切り替えで移行する。Workersの `routes` 解除をもって引退
 4. `api.ymkw.top` は過渡期に既定ギルドの直接APIとして維持し、同一オリジン化完了後に整理
