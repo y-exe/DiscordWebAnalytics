@@ -178,7 +178,7 @@ export default function RelationGraphView({
       for (const node of data.nodes) {
         graph.addNode(node.user_id, {
           label: node.display_name,
-          size: 4 + 26 * Math.sqrt(node.count / maxCount),
+          size: 6 + 24 * (Math.log(1 + node.count) / Math.log(1 + maxCount)),
           count: node.count,
           topChannel: node.top_channel,
           image: avatarForGraph(node.avatar),
@@ -281,6 +281,41 @@ export default function RelationGraphView({
             graph.setNodeAttribute(id, "x", pos.x);
             graph.setNodeAttribute(id, "y", pos.y);
           }
+        }
+        // 界隈ごとの重心を全体重心から外側へ押し出し、グループを見やすく分離する
+        const SEPARATION = 150;
+        const centroids = new Map<number, { sx: number; sy: number; n: number }>();
+        graph.forEachNode((node, attrs) => {
+          const bucket = centroids.get(attrs.community) ?? { sx: 0, sy: 0, n: 0 };
+          bucket.sx += attrs.x;
+          bucket.sy += attrs.y;
+          bucket.n += 1;
+          centroids.set(attrs.community, bucket);
+        });
+        let globalX = 0;
+        let globalY = 0;
+        let totalNodes = 0;
+        for (const bucket of centroids.values()) {
+          const cx = bucket.sx / bucket.n;
+          const cy = bucket.sy / bucket.n;
+          globalX += cx * bucket.n;
+          globalY += cy * bucket.n;
+          totalNodes += bucket.n;
+        }
+        globalX /= Math.max(totalNodes, 1);
+        globalY /= Math.max(totalNodes, 1);
+        for (const [communityIndex, bucket] of centroids) {
+          const cx = bucket.sx / bucket.n;
+          const cy = bucket.sy / bucket.n;
+          const dx = cx - globalX;
+          const dy = cy - globalY;
+          const distance = Math.hypot(dx, dy) || 1;
+          const pushX = (dx / distance) * SEPARATION;
+          const pushY = (dy / distance) * SEPARATION;
+          graph.forEachNode((node, attrs) => {
+            if (attrs.community !== communityIndex) return;
+            graph.mergeNodeAttributes(node, { x: attrs.x + pushX, y: attrs.y + pushY });
+          });
         }
         worker.terminate();
         if (disposed) {
