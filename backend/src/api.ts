@@ -2274,7 +2274,7 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
 
     const ttl = isAll ? 86400 : 600;
     const headers = { "Cache-Control": `public, max-age=${ttl}` };
-    const ckey = `graph_rel_v4_${guild.guildId}_${isAll ? "all" : `${yearParam}_${monthParam}`}`;
+    const ckey = `graph_rel_v5_${guild.guildId}_${isAll ? "all" : `${yearParam}_${monthParam}`}`;
     const cached = cache.get(ckey);
     if (cached !== undefined) return jsonResponse(cached, 200, headers);
 
@@ -2327,6 +2327,25 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
       baseParams,
     );
 
+    // 時間帯ごとの活動分布 (喋る時間の一致度を測るために使用)
+    const { rows: hourRows } = await pool.query(
+      `SELECT m.user_id, EXTRACT(HOUR FROM m.created_at AT TIME ZONE 'Asia/Tokyo') AS hour, count(*) AS c
+       FROM messages m
+       WHERE m.guild_id = $1 AND m.is_bot = FALSE ${periodFilter}
+       GROUP BY m.user_id, hour`,
+      baseParams,
+    );
+    const hourHist = new Map<string, Map<number, number>>();
+    for (const raw of hourRows as Array<Record<string, unknown>>) {
+      const userId = String(raw.user_id);
+      let hist = hourHist.get(userId);
+      if (!hist) {
+        hist = new Map();
+        hourHist.set(userId, hist);
+      }
+      hist.set(Number(raw.hour), Number(raw.c));
+    }
+
     interface RelNode {
       userId: string;
       displayName: string;
@@ -2369,17 +2388,38 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
         // Σminが2未満の組み合わせは事前に除外 (高速化)
         if (Math.min(a.count, b.count) < 2) continue;
         const [smaller, larger] = a.channels.size <= b.channels.size ? [a, b] : [b, a];
-        let weight = 0;
+        // チャンネルの一致 × 発言量
+        let channelScore = 0;
         for (const [cid, ca] of smaller.channels) {
           const cb = larger.channels.get(cid);
-          if (cb) weight += Math.min(ca, cb);
+          if (cb) channelScore += Math.min(ca, cb);
         }
+        if (channelScore < 2) continue;
+        // 喋る時間の一致度 (時間帯分布のコサイン類似度 0..1)
+        const ha = hourHist.get(a.userId);
+        const hb = hourHist.get(b.userId);
+        let timeScore = 0;
+        if (ha && hb) {
+          let dot = 0;
+          let na = 0;
+          let nb = 0;
+          for (let hour = 0; hour < 24; hour += 1) {
+            const va = ha.get(hour) ?? 0;
+            const vb = hb.get(hour) ?? 0;
+            dot += va * vb;
+            na += va * va;
+            nb += vb * vb;
+          }
+          if (na > 0 && nb > 0) timeScore = dot / Math.sqrt(na * nb);
+        }
+        // 同じ時間帯に活動している人ほど強い結び付きになる
+        const weight = Math.round(channelScore * (0.3 + 0.7 * timeScore));
         if (weight >= 2) edges.push({ a: a.userId, b: b.userId, weight });
       }
     }
     // 関係がある人だけ線を引く: 重みに下限を設け、さらに各メンバーの絡み上位K件だけを残す
     const maxWeightGlobal = edges[0]?.weight ?? 0;
-    const minWeight = Math.max(20, Math.round(maxWeightGlobal * 0.005));
+    const minWeight = Math.max(10, Math.round(maxWeightGlobal * 0.005));
     const significantEdges = edges.filter((edge) => edge.weight >= minWeight);
     const topByNode = new Map<string, Array<{ a: string; b: string; weight: number }>>();
     for (const edge of significantEdges) {
@@ -2396,11 +2436,17 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
       }
       listB.push(edge);
     }
-    const TOP_K = 5;
+    // 線の本数は発言数に比例させる (logスケール: 1件なら1本、上位者は最大10本)
+    const countByNode = new Map(nodes.map((node) => [node.userId, node.count]));
+    const edgeBudgetOf = (userId: string): number => {
+      const count = countByNode.get(userId) ?? 0;
+      return Math.max(1, Math.min(10, Math.ceil(Math.log2(count + 1))));
+    };
     const keptKeys = new Set<string>();
-    for (const list of topByNode.values()) {
+    for (const [userId, list] of topByNode) {
       list.sort((x, y) => y.weight - x.weight);
-      for (const edge of list.slice(0, TOP_K)) {
+      const budget = edgeBudgetOf(userId);
+      for (const edge of list.slice(0, budget)) {
         keptKeys.add(edge.a < edge.b ? edge.a + "|" + edge.b : edge.b + "|" + edge.a);
       }
     }

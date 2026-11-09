@@ -178,7 +178,7 @@ export default function RelationGraphView({
       for (const node of data.nodes) {
         graph.addNode(node.user_id, {
           label: node.display_name,
-          size: 3 + 9 * Math.sqrt(node.count / maxCount),
+          size: 4 + 26 * Math.sqrt(node.count / maxCount),
           count: node.count,
           topChannel: node.top_channel,
           image: avatarForGraph(node.avatar),
@@ -461,8 +461,8 @@ export default function RelationGraphView({
               <div>
                 <p className="text-sm font-black text-foreground">メンバーの関係値グラフ</p>
                 <p className="mt-0.5 text-xs font-bold text-muted-foreground">
-                  同じチャンネルで発言しているメンバー同士を線で結び、
-                  界隈 (コミュニティ検出) ごとに色分けしました。
+                  同じチャンネルでの発言量と時間帯の一致度から関係値を算出し、
+                  活動量に応じた本数の結び付きを線で表しています。色は界隈 (自動検出グループ) です。
                 </p>
               </div>
               <div className="flex gap-4 text-xs font-bold text-muted-foreground">
@@ -548,7 +548,7 @@ export default function RelationGraphView({
             <div className="app-card-padded">
               <p className="text-sm font-black text-foreground">結び付きが強いペア</p>
               <p className="mt-0.5 mb-4 text-xs font-bold text-muted-foreground">
-                同じチャンネルでの発言量が重なる組み合わせ
+                関係値 (チャンネル一致×発言量×時間帯一致) が高い組み合わせ
               </p>
               {topPairs.length === 0 ? (
                 <p className="py-6 text-center text-sm text-muted-foreground">データがありません</p>
