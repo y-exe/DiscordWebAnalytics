@@ -2428,8 +2428,10 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
       return Math.max(1, Math.min(10, Math.ceil(Math.log2(count + 1))));
     };
     const limitedEdges: typeof edges = [];
-    for (const [userId, list] of topByNode) {
+    for (const [, list] of topByNode) {
       list.sort((x, y) => y.weight - x.weight);
+    }
+    for (const [userId, list] of topByNode) {
       const budget = edgeBudgetOf(userId);
       for (let index = 0; index < Math.min(budget, list.length); index += 1) {
         const edge = list[index];
