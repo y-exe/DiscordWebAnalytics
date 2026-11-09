@@ -2273,7 +2273,7 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
     }
 
     const ttl = isAll ? 86400 : 600;
-    const headers = { "Cache-Control": `public, max-age=${ttl}` };
+    const headers = { "Cache-Control": "no-store" };
     const ckey = `graph_rel_v6_${guild.guildId}_${isAll ? "all" : `${yearParam}_${monthParam}`}`;
     const cached = cache.get(ckey);
     if (cached !== undefined) return jsonResponse(cached, 200, headers);
@@ -2501,7 +2501,7 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
     }
 
     const ttl = isAll ? 86400 : 600;
-    const headers = { "Cache-Control": `public, max-age=${ttl}` };
+    const headers = { "Cache-Control": "no-store" };
     const ckey = `graph_part_${guild.guildId}_${userId}_${isAll ? "all" : `${yearParam}_${monthParam}`}`;
     const cached = cache.get(ckey);
     if (cached !== undefined) return jsonResponse(cached, 200, headers);
