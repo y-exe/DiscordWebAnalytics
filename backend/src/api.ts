@@ -2274,7 +2274,7 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
 
     const ttl = isAll ? 86400 : 600;
     const headers = { "Cache-Control": `public, max-age=${ttl}` };
-    const ckey = `graph_rel_v3_${guild.guildId}_${isAll ? "all" : `${yearParam}_${monthParam}`}`;
+    const ckey = `graph_rel_v4_${guild.guildId}_${isAll ? "all" : `${yearParam}_${monthParam}`}`;
     const cached = cache.get(ckey);
     if (cached !== undefined) return jsonResponse(cached, 200, headers);
 
@@ -2377,9 +2377,12 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
         if (weight >= 2) edges.push({ a: a.userId, b: b.userId, weight });
       }
     }
-    // 関係がある人だけ線を引く: 各メンバーの絡み上位K件だけを残す
+    // 関係がある人だけ線を引く: 重みに下限を設け、さらに各メンバーの絡み上位K件だけを残す
+    const maxWeightGlobal = edges[0]?.weight ?? 0;
+    const minWeight = Math.max(20, Math.round(maxWeightGlobal * 0.005));
+    const significantEdges = edges.filter((edge) => edge.weight >= minWeight);
     const topByNode = new Map<string, Array<{ a: string; b: string; weight: number }>>();
-    for (const edge of edges) {
+    for (const edge of significantEdges) {
       let listA = topByNode.get(edge.a);
       if (!listA) {
         listA = [];
@@ -2393,7 +2396,7 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
       }
       listB.push(edge);
     }
-    const TOP_K = 4;
+    const TOP_K = 5;
     const keptKeys = new Set<string>();
     for (const list of topByNode.values()) {
       list.sort((x, y) => y.weight - x.weight);
@@ -2402,7 +2405,10 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
       }
     }
     const edgeByKey = new Map(
-      edges.map((edge) => [edge.a < edge.b ? edge.a + "|" + edge.b : edge.b + "|" + edge.a, edge]),
+      significantEdges.map((edge) => [
+        edge.a < edge.b ? edge.a + "|" + edge.b : edge.b + "|" + edge.a,
+        edge,
+      ]),
     );
     const limitedEdges = [...keptKeys]
       .map((key) => edgeByKey.get(key))
