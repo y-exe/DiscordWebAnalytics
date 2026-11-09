@@ -2274,14 +2274,14 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
 
     const ttl = isAll ? 86400 : 600;
     const headers = { "Cache-Control": `public, max-age=${ttl}` };
-    const ckey = `graph_rel_${guild.guildId}_${isAll ? "all" : `${yearParam}_${monthParam}`}`;
+    const ckey = `graph_rel_v2_${guild.guildId}_${isAll ? "all" : `${yearParam}_${monthParam}`}`;
     const cached = cache.get(ckey);
     if (cached !== undefined) return jsonResponse(cached, 200, headers);
 
     const pool = deps.getPool();
     if (!pool) return jsonError(503, "Service unavailable.");
 
-    const MAX_NODES = 48;
+    const MAX_NODES = 2000;
     const baseParams: unknown[] = [guild.guildId];
     let periodFilter = "";
     if (startDate && endDate) {
@@ -2323,7 +2323,7 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
          AND ${DELETED_USER_FILTER}
          AND gm.display_name NOT ILIKE 'deleted%user'
        GROUP BY m.user_id, gm.display_name, u.display_name, u.username, u.avatar_url, u.avatar_decoration_url, m.channel_id
-       HAVING count(*) >= 2`,
+       HAVING count(*) >= 1`,
       baseParams,
     );
 
@@ -2366,6 +2366,8 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
       for (let j = i + 1; j < nodes.length; j += 1) {
         const a = nodes[i];
         const b = nodes[j];
+        // Σminが2未満の組み合わせは事前に除外 (高速化)
+        if (Math.min(a.count, b.count) < 2) continue;
         const [smaller, larger] = a.channels.size <= b.channels.size ? [a, b] : [b, a];
         let weight = 0;
         for (const [cid, ca] of smaller.channels) {
@@ -2376,7 +2378,7 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
       }
     }
     edges.sort((x, y) => y.weight - x.weight);
-    const limitedEdges = edges.slice(0, 320);
+    const limitedEdges = edges.slice(0, 8000);
 
     const payload = {
       nodes: nodes.map((node) => {

@@ -1,549 +1,522 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useTheme } from "next-themes";
+import Graph from "graphology";
+import type { Attributes } from "graphology-types";
+import type { EdgeReducer, NodeReducer } from "sigma/types";
+import louvain from "graphology-communities-louvain";
+import forceAtlas2 from "graphology-layout-forceatlas2";
+import noverlap from "graphology-layout-noverlap";
 import PageToolbar from "@/components/shell/PageToolbar";
 import PeriodPicker from "@/components/shell/PeriodPicker";
-import { DEFAULT_AVATAR_URL } from "./RankTopCard";
 import { fetchAPI } from "@/lib/api";
 import { periodLabel } from "@/lib/period";
 
-interface MemberLite {
+interface GraphNode {
   user_id: string;
   display_name: string;
   username: string;
-  avatar: string | null;
-  avatar_decoration: string | null;
+  count: number;
+  top_channel: string | null;
 }
 
-interface Partner {
-  user_id: string;
-  display_name: string;
-  username: string;
-  avatar: string | null;
-  avatar_decoration: string | null;
+interface GraphEdge {
+  a: string;
+  b: string;
   weight: number;
 }
 
-interface PartnersPayload {
-  center: (MemberLite & { count: number }) | null;
-  partners: Partner[];
-}
-
-/** comcom風のノード配色 (パステル) */
-const NODE_PALETTE = [
-  "#2fb7a4",
-  "#9b59d0",
-  "#f0854e",
-  "#f0b429",
-  "#eb6f91",
-  "#3964fe",
-  "#4fae6a",
-  "#5cb3f6",
+/** VRCX-0のMutual Friendsグラフと同じコミュニティパレット (dark/light) */
+const DARK_PALETTE = [
+  "#7c8cf8",
+  "#5ec98d",
+  "#e8b45c",
+  "#ef7a83",
+  "#5fb6e0",
+  "#b085e8",
+  "#4ec9c0",
+  "#f0925e",
+  "#e984c4",
 ];
+const LIGHT_PALETTE = [
+  "#4f5fd9",
+  "#2f9e63",
+  "#c08321",
+  "#d2545f",
+  "#2f8fc4",
+  "#8a5cd0",
+  "#1f9a92",
+  "#cf6b32",
+  "#c85aa0",
+];
+const NAMED_COMMUNITY_LIMIT = 6;
+const MIN_NAMED_SIZE = 3;
 
-function colorForUser(userId: string): string {
-  let hash = 0;
-  for (let i = 0; i < userId.length; i += 1) hash = (hash * 31 + userId.charCodeAt(i)) >>> 0;
-  return NODE_PALETTE[hash % NODE_PALETTE.length];
+/** Louvain用のシード済み乱数 (VRCX-0と同じシードで決定的にする) */
+function seededRandom(seed: number): () => number {
+  let state = seed >>> 0;
+  return () => {
+    state = (state + 0x6d2b79f5) >>> 0;
+    let value = Math.imul(state ^ (state >>> 15), 1 | state);
+    value = (value + 0x6d2b79f5) >>> 0;
+    return ((value ^ (value >>> 15)) >>> 0) / 4294967296;
+  };
 }
 
-/** 選択メンバーを中心に、絡みの多い相手を放射状に並べる星型ネットワーク (comcom風) */
+function hexToRgb(hex: string): [number, number, number] {
+  const value = hex.replace("#", "");
+  return [
+    parseInt(value.slice(0, 2), 16),
+    parseInt(value.slice(2, 4), 16),
+    parseInt(value.slice(4, 6), 16),
+  ];
+}
+
+/** VRCX-0のNODE_DIM_STRENGTH相当: 背景色へ混ぜて落とす */
+function dimColor(hex: string, background: string, strength: number): string {
+  const [r1, g1, b1] = hexToRgb(hex);
+  const [r2, g2, b2] = hexToRgb(background);
+  const mix = (a: number, b: number) => Math.round(a + (b - a) * strength);
+  return `rgb(${mix(r1, r2)},${mix(g1, g2)},${mix(b1, b2)})`;
+}
+
+interface CommunityInfo {
+  index: number;
+  name: string;
+  color: string;
+  size: number;
+  named: boolean;
+}
+
+interface SigmaLike {
+  kill(): void;
+  refresh(options?: { skipIndexation?: boolean }): void;
+  getCamera(): {
+    setState(state: { x?: number; y?: number; ratio?: number; angle?: number }): void;
+  };
+  on(event: string, handler: (payload: { node: string; edge?: string }) => void): SigmaLike;
+}
+
 export default function RelationGraphView({
   period,
 }: {
   period: { key: string; year: number | null; month: number | null; isAll: boolean };
 }) {
-  const [members, setMembers] = useState<MemberLite[]>([]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [query, setQuery] = useState("");
-  const [pickerOpen, setPickerOpen] = useState(false);
-  const [payload, setPayload] = useState<PartnersPayload | null>(null);
-  const [loading, setLoading] = useState(false);
+  const { resolvedTheme } = useTheme();
+  const isDark = resolvedTheme === "dark";
+
+  const [data, setData] = useState<{ nodes: GraphNode[]; edges: GraphEdge[] } | null>(null);
   const [failed, setFailed] = useState(false);
+  const [layoutRunning, setLayoutRunning] = useState(false);
+  const [communities, setCommunities] = useState<CommunityInfo[]>([]);
+  const [focused, setFocused] = useState<{ id: string; label: string } | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const pickerRef = useRef<HTMLDivElement | null>(null);
+  const sigmaRef = useRef<SigmaLike | null>(null);
 
-  const membersBase = period.isAll
-    ? "/users/members/total"
-    : `/users/members/${period.year}/${period.month}`;
+  const base = period.isAll
+    ? "/graph/relation/total"
+    : `/graph/relation/${period.year}/${period.month}`;
 
-  // 全メンバー (検索用)
   useEffect(() => {
     let cancelled = false;
-    setMembers([]);
-    setSelectedId(null);
-    setQuery("");
-    fetchAPI(membersBase)
-      .then(async (res) => {
-        if (!res.ok) return;
-        const body = (await res.json()) as MemberLite[];
-        if (!cancelled) setMembers(Array.isArray(body) ? body : []);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [membersBase]);
-
-  // メンバー一覧が揃ったら発言数トップのメンバーを既定表示にする
-  useEffect(() => {
-    if (!selectedId && members.length > 0) setSelectedId(members[0].user_id);
-  }, [members, selectedId]);
-
-  const partnersBase = useMemo(() => {
-    if (!selectedId) return null;
-    return period.isAll
-      ? `/graph/partners/${selectedId}/total`
-      : `/graph/partners/${selectedId}/${period.year}/${period.month}`;
-  }, [selectedId, period]);
-
-  useEffect(() => {
-    if (!partnersBase) return;
-    let cancelled = false;
-    setLoading(true);
+    setData(null);
     setFailed(false);
-    setPayload(null);
-    fetchAPI(partnersBase, { retries: 1 })
+    setFocused(null);
+    fetchAPI(base, { retries: 1, timeout: 120000 })
       .then(async (res) => {
         if (!res.ok) throw new Error(String(res.status));
-        const body = (await res.json()) as PartnersPayload;
-        if (!cancelled) setPayload(body);
+        const body = (await res.json()) as { nodes: GraphNode[]; edges: GraphEdge[] };
+        if (!cancelled) setData(body);
       })
       .catch(() => {
         if (!cancelled) setFailed(true);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
       });
     return () => {
       cancelled = true;
     };
-  }, [partnersBase]);
+  }, [base]);
 
-  const maxWeight = useMemo(
-    () => (payload ? Math.max(...payload.partners.map((partner) => partner.weight), 1) : 1),
-    [payload],
+  const maxCount = useMemo(
+    () => (data ? Math.max(...data.nodes.map((node) => node.count), 1) : 1),
+    [data],
   );
 
-  // ===== 星型ネットワーク描画 =====
+  // ===== sigma.js 描画 (VRCX-0: Louvainコミュニティ + ForceAtlas2) =====
   useEffect(() => {
-    const canvas = canvasRef.current;
     const container = containerRef.current;
-    if (!canvas || !container || !payload || !payload.center) return;
+    if (!container || !data || data.nodes.length === 0) return;
 
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
+    let disposed = false;
+    let sigma: SigmaLike | null = null;
+    setLayoutRunning(true);
 
-    let width = container.clientWidth;
-    let height = container.clientHeight;
-    let dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const run = async () => {
+      const { default: Sigma } = await import("sigma");
+      if (disposed) return;
 
-    const satellites = payload.partners.slice(0, 24);
-    const maxW = Math.max(...satellites.map((partner) => partner.weight), 1);
-    const centerColor = colorForUser(payload.center.user_id);
+      const palette = isDark ? DARK_PALETTE : LIGHT_PALETTE;
+      const neutralColor = isDark ? "#6b7280" : "#a1a8b3";
+      const backgroundColor = isDark ? "#0a0a0a" : "#ffffff";
+      const edgeColor = isDark ? "#242c37" : "#dfe4ea";
+      const edgeCrossColor = isDark ? "#4d5f78" : "#a3b0c2";
+      const edgeActiveColor = isDark ? "#8fa3bd" : "#64748b";
+      const labelColor = isDark ? "#e2e8f0" : "#111827";
 
-    interface StarNode {
-      user_id: string;
-      display_name: string;
-      avatar: string | null;
-      weight: number;
-      color: string;
-      radius: number;
-      x: number;
-      y: number;
-    }
+      const graph = new Graph({ type: "undirected", multi: false, allowSelfLoops: false });
+      for (const node of data.nodes) {
+        graph.addNode(node.user_id, {
+          label: node.display_name,
+          size: 3 + 9 * Math.sqrt(node.count / maxCount),
+          count: node.count,
+          topChannel: node.top_channel,
+          x: (Math.random() - 0.5) * 100,
+          y: (Math.random() - 0.5) * 100,
+        });
+      }
+      for (const edge of data.edges) {
+        if (!graph.hasEdge(edge.a, edge.b) && graph.hasNode(edge.a) && graph.hasNode(edge.b)) {
+          graph.addEdgeWithKey(`${edge.a}|${edge.b}`, edge.a, edge.b, { weight: edge.weight });
+        }
+      }
 
-    const centerNode: StarNode = {
-      user_id: payload.center.user_id,
-      display_name: payload.center.display_name,
-      avatar: payload.center.avatar,
-      weight: payload.center.count,
-      color: centerColor,
-      radius: 30,
-      x: 0,
-      y: 0,
-    };
+      // Louvainコミュニティ検出 (決定的シード)
+      let rawCommunities: Record<string, number | string> = {};
+      if (graph.size > 0) {
+        try {
+          rawCommunities = louvain(graph, { rng: seededRandom(0x9e3779b9), resolution: 1 }) as Record<
+            string,
+            number | string
+          >;
+        } catch {
+          rawCommunities = {};
+        }
+      }
 
-    let ringRadius = 0;
-    let starNodes: StarNode[] = [];
-    const layout = () => {
-      ringRadius = Math.max(130, Math.min(width, height) / 2 - 78);
-      // 絡みが強い順に上から時計回り
-      starNodes = satellites.map((partner, index) => {
-        const angle = -Math.PI / 2 + (2 * Math.PI * index) / Math.max(satellites.length, 1);
-        return {
-          user_id: partner.user_id,
-          display_name: partner.display_name,
-          avatar: partner.avatar,
-          weight: partner.weight,
-          color: colorForUser(partner.user_id),
-          radius: 15 + 9 * Math.sqrt(partner.weight / maxW),
-          x: Math.cos(angle) * ringRadius,
-          y: Math.sin(angle) * ringRadius,
-        };
+      // コミュニティごとのメンバーと代表チャンネル (界隈名)
+      const members = new Map<string, GraphNode[]>();
+      for (const node of data.nodes) {
+        const key = String(rawCommunities[node.user_id] ?? "isolated");
+        const bucket = members.get(key);
+        if (bucket) bucket.push(node);
+        else members.set(key, [node]);
+      }
+      const ranked = [...members.values()].sort((a, b) => b.length - a.length);
+      const communityOf = new Map<string, number>();
+      const communityInfos: CommunityInfo[] = [];
+      ranked.forEach((memberNodes, index) => {
+        const named = memberNodes.length >= MIN_NAMED_SIZE && index < NAMED_COMMUNITY_LIMIT;
+        // コミュニティ内で最も多い主活動チャンネルを界隈名にする
+        const channelCount = new Map<string, number>();
+        for (const node of memberNodes) {
+          if (!node.top_channel) continue;
+          channelCount.set(node.top_channel, (channelCount.get(node.top_channel) ?? 0) + 1);
+        }
+        const dominant = [...channelCount.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+        for (const node of memberNodes) communityOf.set(node.user_id, index);
+        communityInfos.push({
+          index,
+          name: dominant ?? "その他",
+          color: named ? palette[index % palette.length] : neutralColor,
+          size: memberNodes.length,
+          named,
+        });
       });
+      setCommunities(communityInfos);
+
+      graph.forEachNode((node) => {
+        const index = communityOf.get(node) ?? -1;
+        const info = communityInfos[index];
+        graph.setNodeAttribute(node, "community", index);
+        graph.setNodeAttribute(node, "color", info ? info.color : neutralColor);
+      });
+
+      // ForceAtlas2レイアウト (VRCX-0の既定: 800反復・spacing 60)
+      const inferred = forceAtlas2.inferSettings(graph);
+      forceAtlas2.assign(graph, {
+        iterations: 800,
+        settings: {
+          ...inferred,
+          barnesHutOptimize: true,
+          barnesHutTheta: 0.8,
+          strongGravityMode: true,
+          gravity: 1.38,
+          scalingRatio: 60,
+          slowDown: 2,
+        },
+      });
+      noverlap.assign(graph, {
+        maxIterations: 400,
+        settings: { ratio: 1.1, margin: 3 },
+      });
+
+      if (disposed) return;
+
+      const neighborSet = new Set<string>();
+      let hovered: string | null = null;
+
+      sigma = new Sigma(graph, container, {
+        settings: {
+          labelDensity: 0.7,
+          labelGridCellSize: 140,
+          labelRenderedSizeThreshold: 10,
+          minCameraRatio: 0.08,
+          maxCameraRatio: 12,
+        },
+        styles: {
+          nodes: {
+            labelColor: labelColor,
+          },
+          edges: {
+            color: edgeColor,
+            size: 0.4,
+          },
+        },
+        nodeReducer: ((node: string, data: Partial<Record<string, unknown>>) => {
+          const res: Record<string, unknown> = { ...data };
+          if (hovered) {
+            if (node === hovered) {
+              res.size = Number(data.size ?? 0) * 1.55;
+              res.forceLabel = true;
+              res.zIndex = 2;
+            } else if (neighborSet.has(node)) {
+              res.forceLabel = true;
+              res.zIndex = 1;
+            } else {
+              res.color = dimColor(String(data.color ?? neutralColor), backgroundColor, 0.9);
+            }
+          }
+          return res;
+        }) as unknown as NodeReducer,
+        edgeReducer: ((edge: string, data: Partial<Record<string, unknown>>) => {
+          const res: Record<string, unknown> = { ...data };
+          const [source, target] = graph.extremities(edge);
+          const isCross = communityOf.get(source) !== communityOf.get(target);
+          if (hovered) {
+            if (source === hovered || target === hovered) {
+              res.color = edgeActiveColor;
+              res.size = 2;
+              res.zIndex = 1;
+            } else {
+              res.hidden = true;
+            }
+          } else {
+            res.color = isCross ? edgeCrossColor : edgeColor;
+            res.size = isCross ? 0.75 : 0.4;
+          }
+          return res;
+        }) as unknown as EdgeReducer,
+      }) as unknown as SigmaLike;
+
+      // グラフ全体が収まるようにカメラを合わせる
+      let minX = Infinity;
+      let maxX = -Infinity;
+      let minY = Infinity;
+      let maxY = -Infinity;
+      graph.forEachNode((_node, attrs) => {
+        minX = Math.min(minX, attrs.x);
+        maxX = Math.max(maxX, attrs.x);
+        minY = Math.min(minY, attrs.y);
+        maxY = Math.max(maxY, attrs.y);
+      });
+      const width = Math.max(maxX - minX, 1);
+      const height = Math.max(maxY - minY, 1);
+      sigma.getCamera().setState({
+        x: (minX + maxX) / 2,
+        y: (minY + maxY) / 2,
+        ratio: Math.max(width, height) * 1.1,
+        angle: 0,
+      });
+
+      sigma.on("enterNode", ({ node }) => {
+        hovered = node;
+        neighborSet.clear();
+        graph.forEachNeighbor(node, (neighbor) => neighborSet.add(neighbor));
+        sigma?.refresh();
+      });
+      sigma.on("leaveNode", () => {
+        hovered = null;
+        neighborSet.clear();
+        sigma?.refresh();
+      });
+      sigma.on("clickNode", ({ node }) => {
+        const attrs = graph.getNodeAttributes(node);
+        setFocused({ id: node, label: String(attrs.label ?? "") });
+      });
+
+      sigmaRef.current = sigma;
+      setLayoutRunning(false);
     };
 
-    // アバター読み込み
-    const images = new Map<string, HTMLImageElement | null>();
-    const ensureImage = (user_id: string, avatar: string | null) => {
-      if (images.has(user_id)) return;
-      const img = new Image();
-      img.crossOrigin = "anonymous";
-      img.onload = () => draw();
-      img.src = avatar || DEFAULT_AVATAR_URL;
-      images.set(user_id, img);
-    };
-    ensureImage(centerNode.user_id, centerNode.avatar);
-    for (const node of starNodes) ensureImage(node.user_id, node.avatar);
-
-    let hoverNode: StarNode | null = null;
-
-    function draw() {
-      if (!ctx) return;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.clearRect(0, 0, width, height);
-      ctx.translate(width / 2, height / 2);
-
-      const labelColor = "#8b909a";
-      // エッジ (サーモン色、絡みが強いほど太い)
-      for (const node of starNodes) {
-        const isHighlighted = hoverNode === node;
-        ctx.strokeStyle = isHighlighted
-          ? "#f0854e"
-          : `rgba(240,138,110,${isHighlighted ? 0.95 : 0.28 + 0.45 * (node.weight / maxW)})`;
-        ctx.lineWidth = isHighlighted ? 10 : 2 + 9 * (node.weight / maxW);
-        ctx.lineCap = "round";
-        ctx.beginPath();
-        ctx.moveTo(0, 0);
-        ctx.lineTo(node.x, node.y);
-        ctx.stroke();
-      }
-
-      // 中心メンバー
-      ctx.globalAlpha = 1;
-      if (hoverNode) {
-        ctx.globalAlpha = 0.35;
-      }
-      drawNode(centerNode, true);
-      ctx.globalAlpha = 1;
-
-      // 衛星ノード
-      for (const node of starNodes) {
-        const dimmed = hoverNode && hoverNode !== node;
-        ctx.globalAlpha = dimmed ? 0.35 : 1;
-        drawNode(node, false);
-        ctx.globalAlpha = 1;
-      }
-
-      function drawNode(node: StarNode, isCenter: boolean) {
-        if (!ctx) return;
-        const img = images.get(node.user_id);
-        const imageReady = img && img.complete && img.naturalWidth > 0;
-        // リング
-        ctx.beginPath();
-        ctx.arc(node.x, node.y, node.radius + 2, 0, Math.PI * 2);
-        ctx.fillStyle = node.color;
-        ctx.fill();
-        // 円の中身 (アバター or 頭文字)
-        if (imageReady) {
-          ctx.save();
-          ctx.beginPath();
-          ctx.arc(node.x, node.y, node.radius, 0, Math.PI * 2);
-          ctx.clip();
-          const size = node.radius * 2;
-          ctx.drawImage(img, node.x - node.radius, node.y - node.radius, size, size);
-          ctx.restore();
-        } else {
-          ctx.beginPath();
-          ctx.arc(node.x, node.y, node.radius, 0, Math.PI * 2);
-          ctx.fillStyle = node.color;
-          ctx.fill();
-          ctx.fillStyle = "#fff";
-          ctx.font = `bold ${Math.round(node.radius * 0.9)}px system-ui, sans-serif`;
-          ctx.textAlign = "center";
-          ctx.textBaseline = "middle";
-          ctx.fillText(node.display_name.slice(0, 1).toUpperCase(), node.x, node.y + 1);
-        }
-        // 名前ラベル
-        const label =
-          node.display_name.length > 12 ? `${node.display_name.slice(0, 11)}…` : node.display_name;
-        ctx.font = isCenter ? "bold 12px system-ui, sans-serif" : "bold 11px system-ui, sans-serif";
-        ctx.textAlign = "center";
-        ctx.textBaseline = "top";
-        ctx.lineWidth = 3;
-        ctx.strokeStyle = "rgba(0,0,0,0.5)";
-        const labelY = isCenter ? node.radius + 6 : node.y + node.radius + 4;
-        ctx.strokeText(label, node.x, labelY);
-        ctx.fillStyle = labelColor;
-        ctx.fillText(label, node.x, labelY);
-        // 絡み数 (ホバー中のみ)
-        if (hoverNode === node) {
-          ctx.font = "bold 11px system-ui, sans-serif";
-          ctx.textAlign = "center";
-          ctx.textBaseline = "bottom";
-          ctx.strokeText(`${node.weight.toLocaleString("ja-JP")}絡み`, node.x, node.y - node.radius - 6);
-          ctx.fillStyle = "#f0854e";
-          ctx.fillText(`${node.weight.toLocaleString("ja-JP")}絡み`, node.x, node.y - node.radius - 6);
-        }
-      }
-    }
-
-    const resize = () => {
-      width = container.clientWidth;
-      height = container.clientHeight;
-      dpr = Math.min(window.devicePixelRatio || 1, 2);
-      canvas.width = Math.round(width * dpr);
-      canvas.height = Math.round(height * dpr);
-      canvas.style.width = `${width}px`;
-      canvas.style.height = `${height}px`;
-      layout();
-      draw();
-    };
-    resize();
-    const observer = new ResizeObserver(resize);
-    observer.observe(container);
-
-    const toLocal = (event: PointerEvent): { x: number; y: number } => {
-      const rect = canvas.getBoundingClientRect();
-      return { x: event.clientX - rect.left - width / 2, y: event.clientY - rect.top - height / 2 };
-    };
-
-    const pick = (event: PointerEvent): StarNode | null => {
-      const local = toLocal(event);
-      let closest: StarNode | null = null;
-      let closestDist = Infinity;
-      for (const node of starNodes) {
-        const dist = Math.hypot(local.x - node.x, local.y - node.y);
-        if (dist < node.radius + 8 && dist < closestDist) {
-          closest = node;
-          closestDist = dist;
-        }
-      }
-      return closest;
-    };
-
-    const onPointerMove = (event: PointerEvent) => {
-      const picked = pick(event);
-      if (picked !== hoverNode) {
-        hoverNode = picked;
-        canvas.style.cursor = picked ? "pointer" : "default";
-        draw();
-      }
-    };
-    const onPointerLeave = () => {
-      if (hoverNode) {
-        hoverNode = null;
-        draw();
-      }
-    };
-    const onClick = (event: MouseEvent) => {
-      // クリックで衛星メンバーを中心に切替
-      const rect = canvas.getBoundingClientRect();
-      const local = { x: event.clientX - rect.left - width / 2, y: event.clientY - rect.top - height / 2 };
-      for (const node of starNodes) {
-        if (Math.hypot(local.x - node.x, local.y - node.y) < node.radius + 8) {
-          setSelectedId(node.user_id);
-          break;
-        }
-      }
-    };
-
-    canvas.addEventListener("pointermove", onPointerMove);
-    canvas.addEventListener("pointerleave", onPointerLeave);
-    canvas.addEventListener("click", onClick);
+    void run();
 
     return () => {
-      observer.disconnect();
-      canvas.removeEventListener("pointermove", onPointerMove);
-      canvas.removeEventListener("pointerleave", onPointerLeave);
-      canvas.removeEventListener("click", onClick);
+      disposed = true;
+      sigmaRef.current = null;
+      sigma?.kill();
     };
-  }, [payload, maxWeight]);
+  }, [data, isDark, maxCount]);
 
-  // ピッカー外クリックで閉じる
-  useEffect(() => {
-    if (!pickerOpen) return;
-    const onDown = (event: MouseEvent) => {
-      if (pickerRef.current && !pickerRef.current.contains(event.target as globalThis.Node)) {
-        setPickerOpen(false);
-      }
-    };
-    document.addEventListener("pointerdown", onDown);
-    return () => document.removeEventListener("pointerdown", onDown);
-  }, [pickerOpen]);
-
-  const filteredMembers = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const base = q
-      ? members.filter(
-          (member) =>
-            member.display_name.toLowerCase().includes(q) || member.username.toLowerCase().includes(q),
-        )
-      : members;
-    return base.slice(0, 50);
-  }, [members, query]);
-
-  const selectedMember = useMemo(
-    () => members.find((member) => member.user_id === selectedId) ?? null,
-    [members, selectedId],
-  );
+  const topPairs = useMemo(() => {
+    if (!data) return [];
+    const byId = new Map(data.nodes.map((node) => [node.user_id, node]));
+    return [...data.edges]
+      .slice(0, 8)
+      .map((edge) => ({ edge, a: byId.get(edge.a), b: byId.get(edge.b) }))
+      .filter((pair) => pair.a && pair.b);
+  }, [data]);
 
   const title = period.isAll ? "全期間" : periodLabel(period);
+
+  if (failed) {
+    return (
+      <div className="app-card-padded text-center text-sm text-muted-foreground">
+        データの読み込みに失敗しました。
+      </div>
+    );
+  }
+
+  if (!data) {
+    return (
+      <div className="space-y-4">
+        <div className="h-9 w-64 animate-pulse rounded-xl bg-muted" />
+        <div className="h-[620px] animate-pulse rounded-2xl bg-muted" />
+      </div>
+    );
+  }
+
+  const focusedNode = focused
+    ? data.nodes.find((node) => node.user_id === focused.id) ?? null
+    : null;
 
   return (
     <div className="space-y-5">
       <PageToolbar
         title="関係性"
-        subtitle={`${title}に絡みの多いメンバーとのつながり (全${members.length}人から選択)`}
+        subtitle={`${title}にアクティブだったメンバー${data.nodes.length}人の関係値グラフ (界隈=コミュニティごとに色分け)`}
         right={<PeriodPicker period={period} mode="query" />}
       />
 
-      {/* メンバー選択 */}
-      <div ref={pickerRef} className="relative max-w-md">
-        <button
-          type="button"
-          onClick={() => setPickerOpen((open) => !open)}
-          className="flex w-full items-center justify-between gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-bold text-foreground transition-colors hover:bg-muted"
-        >
-          <span className="truncate">
-            {selectedMember
-              ? selectedMember.display_name
-              : loading && !payload
-                ? "読み込み中…"
-                : "メンバーを選択"}
-          </span>
-          <span className="shrink-0 text-xs text-muted-foreground">▼</span>
-        </button>
-        {pickerOpen && (
-          <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-xl border border-border bg-card shadow-lg">
-            <input
-              type="text"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="名前で検索…"
-              className="w-full border-b border-border bg-transparent px-4 py-2.5 text-sm font-bold text-foreground outline-none placeholder:font-medium placeholder:text-muted-foreground"
-            />
-            <ul className="max-h-72 overflow-y-auto">
-              {filteredMembers.map((member) => (
-                <li key={member.user_id}>
+      {data.nodes.length === 0 ? (
+        <div className="app-card-padded text-center text-sm text-muted-foreground">
+          この期間にデータがありません。
+        </div>
+      ) : (
+        <div className="grid gap-4 xl:grid-cols-3">
+          <div className="app-card relative overflow-hidden xl:col-span-2">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-5 py-3">
+              <div>
+                <p className="text-sm font-black text-foreground">メンバーの関係値グラフ</p>
+                <p className="mt-0.5 text-xs font-bold text-muted-foreground">
+                  同じチャンネルで発言しているメンバー同士を線で結び、
+                  界隈 (コミュニティ検出) ごとに色分けしました。
+                </p>
+              </div>
+              <div className="flex gap-4 text-xs font-bold text-muted-foreground">
+                <span>メンバー {data.nodes.length}人</span>
+                <span>結び付き {data.edges.length}本</span>
+              </div>
+            </div>
+            <div ref={containerRef} className="relative h-[620px] w-full bg-transparent" />
+            {layoutRunning && (
+              <div className="absolute inset-0 top-[57px] grid place-items-center bg-canvas/60 backdrop-blur-[2px]">
+                <div className="rounded-full bg-card px-4 py-2 text-xs font-black text-foreground shadow">
+                  レイアウト計算中…
+                </div>
+              </div>
+            )}
+            {focusedNode && (
+              <div className="absolute right-4 top-4 w-56 rounded-xl border border-border bg-card p-4 shadow-lg">
+                <div className="flex items-start justify-between gap-2">
+                  <p className="text-sm font-black leading-snug text-foreground">
+                    {focusedNode.display_name}
+                  </p>
                   <button
                     type="button"
-                    onClick={() => {
-                      setSelectedId(member.user_id);
-                      setPickerOpen(false);
-                      setQuery("");
-                    }}
-                    className={`flex w-full items-center gap-2 px-4 py-2 text-left text-sm font-bold transition-colors hover:bg-muted ${
-                      member.user_id === selectedId ? "bg-sidebar-active text-sidebar-text-strong" : "text-foreground"
-                    }`}
+                    aria-label="閉じる"
+                    onClick={() => setFocused(null)}
+                    className="text-xs font-bold text-muted-foreground hover:text-foreground"
                   >
-                    <span
-                      className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-xs font-black text-white"
-                      style={{ backgroundColor: colorForUser(member.user_id) }}
-                    >
-                      {member.display_name.slice(0, 1).toUpperCase()}
-                    </span>
-                    <span className="truncate">{member.display_name}</span>
+                    ✕
                   </button>
-                </li>
-              ))}
-              {filteredMembers.length === 0 && (
-                <li className="px-4 py-3 text-sm text-muted-foreground">見つかりません</li>
-              )}
-            </ul>
-          </div>
-        )}
-      </div>
-
-      {failed && (
-        <div className="app-card-padded text-center text-sm text-muted-foreground">
-          データの読み込みに失敗しました。
-        </div>
-      )}
-
-      {!payload && !failed && (
-        <div className="space-y-4">
-          <div className="h-[460px] animate-pulse rounded-2xl bg-muted" />
-        </div>
-      )}
-
-      {payload && !payload.center && !failed && (
-        <div className="app-card-padded text-center text-sm text-muted-foreground">
-          この期間に発言記録のないメンバーです。
-        </div>
-      )}
-
-      {payload && payload.center && (
-        <div className="grid gap-4 xl:grid-cols-3">
-          <div className="app-card overflow-hidden xl:col-span-2">
-            <div className="border-b border-border px-5 py-3">
-              <p className="text-sm font-black text-foreground">交流ネットワーク</p>
-              <p className="mt-0.5 text-xs font-bold text-muted-foreground">
-                {payload.center.display_name} さんとよく絡んでいるメンバーとのつながり。ノードをクリックで中心を切替。
-              </p>
-            </div>
-            <div ref={containerRef} className="relative h-[440px] w-full">
-              <canvas ref={canvasRef} className="block h-full w-full" />
-              {payload.partners.length === 0 && (
-                <p className="absolute inset-0 grid place-items-center text-sm text-muted-foreground">
-                  この期間に絡んだメンバーがいません
+                </div>
+                <p className="mt-1 text-xs font-bold text-muted-foreground">
+                  {focusedNode.count.toLocaleString("ja-JP")}件 ・
+                  {focusedNode.top_channel ?? "その他"}
                 </p>
-              )}
-            </div>
+                <a
+                  href={`/members/${focusedNode.user_id}?m=${period.key}`}
+                  className="mt-3 block rounded-lg bg-accent-data px-3 py-1.5 text-center text-xs font-black text-white hover:opacity-90"
+                >
+                  メンバー詳細へ
+                </a>
+              </div>
+            )}
           </div>
 
-          <div className="app-card-padded">
-            <p className="text-sm font-black text-foreground">よく絡むメンバー</p>
-            <p className="mt-0.5 mb-4 text-xs font-bold text-muted-foreground">
-              {payload.center.display_name} さんと同じチャンネルでの発言が重なる相手
-            </p>
-            {payload.partners.length === 0 ? (
-              <p className="py-6 text-center text-sm text-muted-foreground">データがありません</p>
-            ) : (
-              <ul className="space-y-2.5">
-                {payload.partners.slice(0, 12).map((partner, index) => (
-                  <li key={partner.user_id}>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedId(partner.user_id)}
-                      className="group block w-full text-left"
-                    >
-                      <div className="mb-1 flex items-center justify-between gap-2 text-xs font-bold">
-                        <span className="flex min-w-0 items-center gap-1.5">
-                          <span
-                            className={`grid h-5 w-5 shrink-0 place-items-center rounded-md text-[10px] font-black ${
-                              index === 0
-                                ? "bg-destructive text-white"
-                                : index < 3
-                                  ? "bg-accent-data text-white"
-                                  : "bg-muted text-muted-foreground"
-                            }`}
-                          >
-                            {index + 1}
-                          </span>
-                          <span className="truncate text-foreground group-hover:underline">
-                            {partner.display_name}
-                          </span>
-                        </span>
-                        <span className="shrink-0 text-muted-foreground">
-                          {partner.weight.toLocaleString("ja-JP")}回
-                        </span>
-                      </div>
-                      <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-                        <div
-                          className="h-full rounded-full bg-accent-data"
-                          style={{
-                            width: `${Math.max(4, Math.round((partner.weight / maxWeight) * 100))}%`,
-                          }}
-                        />
-                      </div>
-                    </button>
+          <div className="space-y-4">
+            <div className="app-card-padded">
+              <p className="text-sm font-black text-foreground">界隈 (コミュニティ)</p>
+              <p className="mt-0.5 mb-3 text-xs font-bold text-muted-foreground">
+                自動検出したグループと代表チャンネル
+              </p>
+              <ul className="space-y-1.5 text-xs font-bold">
+                {communities.slice(0, 9).map((community) => (
+                  <li key={community.index} className="flex items-center justify-between gap-2">
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <span
+                        className="h-3 w-3 shrink-0 rounded-full"
+                        style={{ backgroundColor: community.color }}
+                      />
+                      <span
+                        className={`truncate ${community.named ? "text-foreground" : "text-muted-foreground"}`}
+                      >
+                        {community.named ? community.name : "その他"}
+                      </span>
+                    </span>
+                    <span className="shrink-0 text-muted-foreground">{community.size}人</span>
                   </li>
                 ))}
               </ul>
-            )}
+            </div>
+
+            <div className="app-card-padded">
+              <p className="text-sm font-black text-foreground">結び付きが強いペア</p>
+              <p className="mt-0.5 mb-4 text-xs font-bold text-muted-foreground">
+                同じチャンネルでの発言量が重なる組み合わせ
+              </p>
+              {topPairs.length === 0 ? (
+                <p className="py-6 text-center text-sm text-muted-foreground">データがありません</p>
+              ) : (
+                <ul className="space-y-3">
+                  {topPairs.map(({ edge, a, b }) => {
+                    const maxPair = topPairs[0]?.edge.weight ?? 1;
+                    return (
+                      <li key={`${edge.a}-${edge.b}`}>
+                        <div className="mb-1 flex items-center justify-between gap-2 text-xs font-bold">
+                          <span className="flex min-w-0 items-center gap-1">
+                            <span className="truncate text-foreground">{a?.display_name}</span>
+                            <span className="shrink-0 text-muted-foreground">×</span>
+                            <span className="truncate text-foreground">{b?.display_name}</span>
+                          </span>
+                          <span className="shrink-0 text-muted-foreground">
+                            {edge.weight.toLocaleString("ja-JP")}
+                          </span>
+                        </div>
+                        <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                          <div
+                            className="h-full rounded-full bg-accent-data"
+                            style={{
+                              width: `${Math.max(4, Math.round((edge.weight / maxPair) * 100))}%`,
+                            }}
+                          />
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
           </div>
         </div>
       )}
