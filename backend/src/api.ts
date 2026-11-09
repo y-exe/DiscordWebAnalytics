@@ -2408,6 +2408,144 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
   app.get("/graph/relation/total", (c) => graphRelation(c, true));
 
   /**
+   * 指定メンバーとの絡み (交流ネットワーク用)。
+   * weight = 同じチャンネルでの発言量の重なり分 Σ min(自分の発言数, 相手の発言数)。
+   */
+  const graphPartners = async (c: Context, isAll: boolean) => {
+    const userId = c.req.param("userId") ?? "";
+    if (!/^\d+$/.test(userId)) return jsonError(422, "Invalid path parameter: user_id");
+
+    const guildOrError = await requireGuild(c);
+    if (guildOrError instanceof Response) return guildOrError;
+    const guild = guildOrError;
+
+    let startDate: Date | null = null;
+    let endDate: Date | null = null;
+    let yearParam = "";
+    let monthParam = "";
+    if (!isAll) {
+      yearParam = c.req.param("year") ?? "";
+      monthParam = c.req.param("month") ?? "";
+      const year = pathInt(yearParam);
+      const month = pathInt(monthParam);
+      if (year === null || month === null) return jsonError(422, "Invalid path parameter");
+      const bounds = monthBounds(year, month);
+      if (!Array.isArray(bounds)) return jsonError(400, bounds);
+      [startDate, endDate] = bounds;
+    }
+
+    const ttl = isAll ? 86400 : 600;
+    const headers = { "Cache-Control": `public, max-age=${ttl}` };
+    const ckey = `graph_part_${guild.guildId}_${userId}_${isAll ? "all" : `${yearParam}_${monthParam}`}`;
+    const cached = cache.get(ckey);
+    if (cached !== undefined) return jsonResponse(cached, 200, headers);
+
+    const pool = deps.getPool();
+    if (!pool) return jsonError(503, "Service unavailable.");
+
+    const baseParams: unknown[] = [guild.guildId, userId];
+    let periodFilter = "";
+    if (startDate && endDate) {
+      baseParams.push(startDate, endDate);
+      periodFilter = "AND m.created_at >= $3 AND m.created_at < $4";
+    }
+
+    const [profileRes, partnerRes] = await Promise.all([
+      pool.query(
+        `SELECT COALESCE(gm.display_name, u.display_name, u.username) AS display_name,
+                u.username, u.avatar_url, u.avatar_decoration_url, count(*) AS c
+         FROM messages m
+         JOIN users u ON u.user_id = m.user_id
+         LEFT JOIN guild_members gm ON gm.guild_id = m.guild_id AND gm.user_id = m.user_id
+         WHERE m.guild_id = $1 AND m.user_id = $2 AND m.is_bot = FALSE ${periodFilter}
+         GROUP BY u.user_id, u.display_name, u.username, u.avatar_url, u.avatar_decoration_url, gm.display_name`,
+        baseParams,
+      ),
+      pool.query(
+        `WITH own AS (
+           SELECT m.channel_id, count(*) AS c
+           FROM messages m
+           WHERE m.guild_id = $1 AND m.user_id = $2 AND m.is_bot = FALSE ${periodFilter}
+           GROUP BY m.channel_id
+         ),
+         others AS (
+           SELECT m.user_id, m.channel_id, count(*) AS c
+           FROM messages m
+           WHERE m.guild_id = $1 AND m.user_id <> $2 AND m.is_bot = FALSE ${periodFilter}
+           GROUP BY m.user_id, m.channel_id
+         )
+         SELECT o.user_id, SUM(LEAST(x.c, o.c)) AS w
+         FROM others o
+         JOIN own x ON x.channel_id = o.channel_id
+         WHERE o.c >= 1
+         GROUP BY o.user_id
+         HAVING SUM(LEAST(x.c, o.c)) >= 1
+         ORDER BY w DESC
+         LIMIT 30`,
+        baseParams,
+      ),
+    ]);
+
+    const profile = profileRes.rows[0] as Record<string, unknown> | undefined;
+    if (!profile) {
+      cache.set(ckey, { center: null, partners: [] }, ttl);
+      return jsonResponse({ center: null, partners: [] }, 200, headers);
+    }
+
+    const partnerIds = (partnerRes.rows as Array<Record<string, unknown>>).map((row) =>
+      String(row.user_id),
+    );
+    let partnerProfiles = new Map<string, Record<string, unknown>>();
+    if (partnerIds.length > 0) {
+      const { rows: profileRows } = await pool.query(
+        `SELECT gm.user_id, COALESCE(gm.display_name, u.display_name, u.username) AS display_name,
+                u.username, u.avatar_url, u.avatar_decoration_url
+         FROM guild_members gm
+         JOIN users u ON u.user_id = gm.user_id
+         WHERE gm.guild_id = $1 AND gm.user_id = ANY($2::bigint[])
+           AND u.username NOT ILIKE 'deleted%user'
+           AND gm.display_name NOT ILIKE 'deleted%user'
+           AND u.display_name NOT ILIKE 'deleted%user'`,
+        [guild.guildId, partnerIds],
+      );
+      partnerProfiles = new Map(
+        (profileRows as Array<Record<string, unknown>>).map((row) => [String(row.user_id), row]),
+      );
+    }
+
+    const centerMessages = Number(profile.c ?? 0);
+    const res = {
+      center: {
+        user_id: userId,
+        display_name: (profile.display_name as string) || "Unknown",
+        username: (profile.username as string) || "unknown",
+        avatar: (profile.avatar_url as string | null) ?? null,
+        avatar_decoration: (profile.avatar_decoration_url as string | null) ?? null,
+        count: centerMessages,
+      },
+      partners: (partnerRes.rows as Array<Record<string, unknown>>)
+        .map((row) => {
+          const id = String(row.user_id);
+          const prof = partnerProfiles.get(id);
+          return {
+            user_id: id,
+            display_name: (prof?.display_name as string) || "Unknown",
+            username: (prof?.username as string) || "unknown",
+            avatar: (prof?.avatar_url as string | null) ?? null,
+            avatar_decoration: (prof?.avatar_decoration_url as string | null) ?? null,
+            weight: Number(row.w),
+          };
+        })
+        .filter((partner) => partner.display_name !== "Unknown" || partner.username !== "unknown"),
+    };
+    cache.set(ckey, res, ttl);
+    return jsonResponse(res, 200, headers);
+  };
+
+  app.get("/graph/partners/:userId/:year/:month", (c) => graphPartners(c, false));
+  app.get("/graph/partners/:userId/total", (c) => graphPartners(c, true));
+
+  /**
    * Caddy on-demand TLSのaskエンドポイント。
    * 登録済みかつ有効なギルドドメインのみ証明書発行を許可する (200=許可/404=拒否)。
    * ネットワーク的にVPSのCaddyからのみ到達可能であることを前提とする。
