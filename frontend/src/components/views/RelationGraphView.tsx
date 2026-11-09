@@ -6,8 +6,6 @@ import Graph from "graphology";
 import type { Attributes } from "graphology-types";
 import type { EdgeReducer, NodeReducer } from "sigma/types";
 import louvain from "graphology-communities-louvain";
-import forceAtlas2 from "graphology-layout-forceatlas2";
-import noverlap from "graphology-layout-noverlap";
 import PageToolbar from "@/components/shell/PageToolbar";
 import PeriodPicker from "@/components/shell/PeriodPicker";
 import { fetchAPI } from "@/lib/api";
@@ -109,10 +107,12 @@ export default function RelationGraphView({
   const [data, setData] = useState<{ nodes: GraphNode[]; edges: GraphEdge[] } | null>(null);
   const [failed, setFailed] = useState(false);
   const [layoutRunning, setLayoutRunning] = useState(false);
+  const [layoutProgress, setLayoutProgress] = useState(0);
   const [communities, setCommunities] = useState<CommunityInfo[]>([]);
   const [focused, setFocused] = useState<{ id: string; label: string } | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const sigmaRef = useRef<SigmaLike | null>(null);
+  const workerRef = useRef<Worker | null>(null);
 
   const base = period.isAll
     ? "/graph/relation/total"
@@ -231,26 +231,52 @@ export default function RelationGraphView({
         graph.setNodeAttribute(node, "color", info ? info.color : neutralColor);
       });
 
-      // ForceAtlas2レイアウト (VRCX-0の既定: 800反復・spacing 60)
-      const inferred = forceAtlas2.inferSettings(graph);
-      forceAtlas2.assign(graph, {
+      // レイアウト計算はワーカーへ (VRCX-0と同じ構成)。進捗を表示しつつUIをブロックしない
+      const worker = new Worker(new URL("../../lib/relationLayout.worker.ts", import.meta.url));
+      workerRef.current = worker;
+      worker.onerror = () => {
+        if (!disposed) {
+          setLayoutRunning(false);
+          setLayoutProgress(0);
+        }
+      };
+      worker.postMessage({
+        nodes: data.nodes.map((node) => ({
+          id: node.user_id,
+          x: graph.getNodeAttribute(node.user_id, "x"),
+          y: graph.getNodeAttribute(node.user_id, "y"),
+        })),
+        edges: data.edges.map((edge) => ({ source: edge.a, target: edge.b })),
         iterations: 800,
-        settings: {
-          ...inferred,
-          barnesHutOptimize: true,
-          barnesHutTheta: 0.8,
-          strongGravityMode: true,
-          gravity: 1.38,
-          scalingRatio: 60,
-          slowDown: 2,
-        },
+        spacing: 60,
       });
-      noverlap.assign(graph, {
-        maxIterations: 400,
-        settings: { ratio: 1.1, margin: 3 },
-      });
-
-      if (disposed) return;
+      worker.onmessage = (event: MessageEvent) => {
+        const payload = event.data as
+          | { type: "progress"; progress: number }
+          | { type: "done"; positions: Record<string, { x: number; y: number }> }
+          | { type: "error"; message: string };
+        if (payload.type === "progress") {
+          setLayoutProgress(payload.progress);
+          return;
+        }
+        if (payload.type === "error") {
+          console.error("layout worker:", payload.message);
+          setLayoutRunning(false);
+          return;
+        }
+        for (const [id, pos] of Object.entries(payload.positions)) {
+          if (graph.hasNode(id)) {
+            graph.setNodeAttribute(id, "x", pos.x);
+            graph.setNodeAttribute(id, "y", pos.y);
+          }
+        }
+        worker.terminate();
+        if (disposed) {
+          sigmaRef.current = null;
+          setLayoutRunning(false);
+          return;
+        }
+        setLayoutProgress(100);
 
       const neighborSet = new Set<string>();
       let hovered: string | null = null;
@@ -346,6 +372,8 @@ export default function RelationGraphView({
 
       sigmaRef.current = sigma;
       setLayoutRunning(false);
+      setLayoutProgress(100);
+      };
     };
 
     void run();
@@ -353,6 +381,8 @@ export default function RelationGraphView({
     return () => {
       disposed = true;
       sigmaRef.current = null;
+      workerRef.current?.terminate();
+      workerRef.current = null;
       sigma?.kill();
     };
   }, [data, isDark, maxCount]);
@@ -421,7 +451,7 @@ export default function RelationGraphView({
             {layoutRunning && (
               <div className="absolute inset-0 top-[57px] grid place-items-center bg-canvas/60 backdrop-blur-[2px]">
                 <div className="rounded-full bg-card px-4 py-2 text-xs font-black text-foreground shadow">
-                  レイアウト計算中…
+                  レイアウト計算中… {layoutProgress}%
                 </div>
               </div>
             )}
@@ -461,7 +491,7 @@ export default function RelationGraphView({
                 自動検出したグループと代表チャンネル
               </p>
               <ul className="space-y-1.5 text-xs font-bold">
-                {communities.slice(0, 9).map((community) => (
+                {communities.filter((community) => community.size >= 2).slice(0, 9).map((community) => (
                   <li key={community.index} className="flex items-center justify-between gap-2">
                     <span className="flex min-w-0 items-center gap-1.5">
                       <span
@@ -477,6 +507,18 @@ export default function RelationGraphView({
                     <span className="shrink-0 text-muted-foreground">{community.size}人</span>
                   </li>
                 ))}
+                {(() => {
+                  const isolated = communities
+                    .filter((community) => community.size < 2)
+                    .reduce((sum, community) => sum + community.size, 0);
+                  if (isolated === 0) return null;
+                  return (
+                    <li className="flex items-center justify-between gap-2 border-t border-border pt-1.5 text-muted-foreground">
+                      <span className="truncate">孤立メンバー</span>
+                      <span className="shrink-0">{isolated}人</span>
+                    </li>
+                  );
+                })()}
               </ul>
             </div>
 
