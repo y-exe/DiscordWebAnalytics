@@ -2274,7 +2274,7 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
 
     const ttl = isAll ? 86400 : 600;
     const headers = { "Cache-Control": "no-store" };
-    const ckey = `graph_rel_v9_${guild.guildId}_${isAll ? "all" : `${yearParam}_${monthParam}`}`;
+    const ckey = `graph_rel_v10_${guild.guildId}_${isAll ? "all" : `${yearParam}_${monthParam}`}`;
     const cached = cache.get(ckey);
     if (cached !== undefined) return jsonResponse(cached, 200, headers);
 
@@ -2396,29 +2396,12 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
       const a = byUser.get(String(raw.ua));
       const b = byUser.get(String(raw.ub));
       if (!a || !b) continue;
+      if (!nodeIds.has(a.userId) || !nodeIds.has(b.userId)) continue;
       const weight = Math.round(Number(raw.c) * (0.7 + 0.3 * overlapFraction(a, b)));
       if (weight >= 2) edges.push({ a: a.userId, b: b.userId, weight });
     }
     edges.sort((x, y) => y.weight - x.weight);
-    // 関係がある人だけ線を引く: 重みに下限を設け、さらに各メンバーの絡み上位K件だけを残す
-    const maxWeightGlobal = edges[0]?.weight ?? 0;
-    const minWeight = Math.max(10, Math.round(maxWeightGlobal * 0.005));
-    const significantEdges = edges.filter((edge) => edge.weight >= minWeight);
-    const topByNode = new Map<string, Array<{ a: string; b: string; weight: number }>>();
-    for (const edge of significantEdges) {
-      let listA = topByNode.get(edge.a);
-      if (!listA) {
-        listA = [];
-        topByNode.set(edge.a, listA);
-      }
-      listA.push(edge);
-      let listB = topByNode.get(edge.b);
-      if (!listB) {
-        listB = [];
-        topByNode.set(edge.b, listB);
-      }
-      listB.push(edge);
-    }
+
     // 線の本数は発言数に比例させる (logスケール: 1件なら1本、上位者は最大10本)。
     // 各メンバーの次数が予算を超えたら、そのメンバーにとって弱い線から順に削る。
     const countByNode = new Map(nodes.map((node) => [node.userId, node.count]));
@@ -2426,28 +2409,44 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
       const count = countByNode.get(userId) ?? 0;
       return Math.max(1, Math.min(10, Math.ceil(Math.log2(count + 1))));
     };
-    const degree = new Map<string, number>();
+    const keyOf = (edge: { a: string; b: string }): string =>
+      edge.a < edge.b ? edge.a + "|" + edge.b : edge.b + "|" + edge.a;
+    const incident = new Map<string, Array<{ key: string; weight: number }>>();
     for (const edge of edges) {
-      degree.set(edge.a, (degree.get(edge.a) ?? 0) + 1);
-      degree.set(edge.b, (degree.get(edge.b) ?? 0) + 1);
+      const key = keyOf(edge);
+      let la = incident.get(edge.a);
+      if (!la) {
+        la = [];
+        incident.set(edge.a, la);
+      }
+      la.push({ key, weight: edge.weight });
+      let lb = incident.get(edge.b);
+      if (!lb) {
+        lb = [];
+        incident.set(edge.b, lb);
+      }
+      lb.push({ key, weight: edge.weight });
     }
-    // 弱い順に走査し、両端とも予算超過なら削除
+    // 次数が予算を超えるメンバーから弱い線を外す (他端の次数が減って波及するため反復)
     const removedKeys = new Set<string>();
-    const sortedAsc = [...edges].sort((x, y) => x.weight - y.weight);
-    for (const edge of sortedAsc) {
-      const da = degree.get(edge.a) ?? 0;
-      const db = degree.get(edge.b) ?? 0;
-      if (da > edgeBudgetOf(edge.a) && db > edgeBudgetOf(edge.b)) {
-        degree.set(edge.a, da - 1);
-        degree.set(edge.b, db - 1);
-        removedKeys.add(edge.a < edge.b ? edge.a + "|" + edge.b : edge.b + "|" + edge.a);
+    let changed = true;
+    let pass = 0;
+    while (changed && pass < 40) {
+      changed = false;
+      pass += 1;
+      for (const [userId, list] of incident) {
+        const budget = edgeBudgetOf(userId);
+        const alive = list.filter((entry) => !removedKeys.has(entry.key));
+        if (alive.length <= budget) continue;
+        alive.sort((x, y) => x.weight - y.weight);
+        for (const entry of alive.slice(0, alive.length - budget)) {
+          removedKeys.add(entry.key);
+          changed = true;
+        }
       }
     }
     const limitedEdges = edges
-      .filter((edge) => {
-        const key = edge.a < edge.b ? edge.a + "|" + edge.b : edge.b + "|" + edge.a;
-        return !removedKeys.has(key);
-      })
+      .filter((edge) => !removedKeys.has(keyOf(edge)))
       .sort((x, y) => y.weight - x.weight);
 
     const payload = {
