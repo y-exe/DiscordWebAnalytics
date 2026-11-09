@@ -2274,7 +2274,7 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
 
     const ttl = isAll ? 86400 : 600;
     const headers = { "Cache-Control": "no-store" };
-    const ckey = `graph_rel_v8_${guild.guildId}_${isAll ? "all" : `${yearParam}_${monthParam}`}`;
+    const ckey = `graph_rel_v9_${guild.guildId}_${isAll ? "all" : `${yearParam}_${monthParam}`}`;
     const cached = cache.get(ckey);
     if (cached !== undefined) return jsonResponse(cached, 200, headers);
 
@@ -2373,7 +2373,7 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
        )
        SELECT s1.user_id AS ua, s2.user_id AS ub, count(*) AS c
        FROM slots s1
-       JOIN slots s2 ON s2.channel_id = s1.channel_id AND s2.bucket = s1.bucket AND s2.user_id <> s1.user_id
+       JOIN slots s2 ON s2.channel_id = s1.channel_id AND s2.bucket = s1.bucket AND s2.user_id < s1.user_id
        GROUP BY 1, 2
        HAVING count(*) >= 2`,
       baseParams,
@@ -2420,31 +2420,35 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
       listB.push(edge);
     }
     // 線の本数は発言数に比例させる (logスケール: 1件なら1本、上位者は最大10本)。
-    // かつ「双方が互いに上位に入れている」結び付きのみ残す (一方的な指名で
-    // 中心的メンバーに大量の線が集まるのを防ぐ)。
+    // 各メンバーの次数が予算を超えたら、そのメンバーにとって弱い線から順に削る。
     const countByNode = new Map(nodes.map((node) => [node.userId, node.count]));
     const edgeBudgetOf = (userId: string): number => {
       const count = countByNode.get(userId) ?? 0;
       return Math.max(1, Math.min(10, Math.ceil(Math.log2(count + 1))));
     };
-    const limitedEdges: typeof edges = [];
-    for (const [, list] of topByNode) {
-      list.sort((x, y) => y.weight - x.weight);
+    const degree = new Map<string, number>();
+    for (const edge of edges) {
+      degree.set(edge.a, (degree.get(edge.a) ?? 0) + 1);
+      degree.set(edge.b, (degree.get(edge.b) ?? 0) + 1);
     }
-    for (const [userId, list] of topByNode) {
-      const budget = edgeBudgetOf(userId);
-      for (let index = 0; index < Math.min(budget, list.length); index += 1) {
-        const edge = list[index];
-        const other = edge.a === userId ? edge.b : edge.a;
-        const otherList = topByNode.get(other);
-        if (!otherList) continue;
-        const otherIndex = otherList.indexOf(edge);
-        if (otherIndex >= 0 && otherIndex < edgeBudgetOf(other)) {
-          if (userId < other) limitedEdges.push(edge);
-        }
+    // 弱い順に走査し、両端とも予算超過なら削除
+    const removedKeys = new Set<string>();
+    const sortedAsc = [...edges].sort((x, y) => x.weight - y.weight);
+    for (const edge of sortedAsc) {
+      const da = degree.get(edge.a) ?? 0;
+      const db = degree.get(edge.b) ?? 0;
+      if (da > edgeBudgetOf(edge.a) && db > edgeBudgetOf(edge.b)) {
+        degree.set(edge.a, da - 1);
+        degree.set(edge.b, db - 1);
+        removedKeys.add(edge.a < edge.b ? edge.a + "|" + edge.b : edge.b + "|" + edge.a);
       }
     }
-    limitedEdges.sort((x, y) => y.weight - x.weight);
+    const limitedEdges = edges
+      .filter((edge) => {
+        const key = edge.a < edge.b ? edge.a + "|" + edge.b : edge.b + "|" + edge.a;
+        return !removedKeys.has(key);
+      })
+      .sort((x, y) => y.weight - x.weight);
 
     const payload = {
       nodes: nodes.map((node) => {
