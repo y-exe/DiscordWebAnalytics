@@ -3,11 +3,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTheme } from "next-themes";
 import Graph from "graphology";
+import { layerImage } from "@sigma/node-image";
+import { layerFill, sdfCircle } from "sigma/rendering";
 import type { Attributes } from "graphology-types";
 import type { EdgeReducer, NodeReducer } from "sigma/types";
 import louvain from "graphology-communities-louvain";
 import PageToolbar from "@/components/shell/PageToolbar";
 import PeriodPicker from "@/components/shell/PeriodPicker";
+import { DEFAULT_AVATAR_URL } from "./RankTopCard";
 import { fetchAPI } from "@/lib/api";
 import { periodLabel } from "@/lib/period";
 
@@ -15,6 +18,7 @@ interface GraphNode {
   user_id: string;
   display_name: string;
   username: string;
+  avatar: string | null;
   count: number;
   top_channel: string | null;
 }
@@ -60,6 +64,13 @@ function seededRandom(seed: number): () => number {
     value = (value + 0x6d2b79f5) >>> 0;
     return ((value ^ (value >>> 15)) >>> 0) / 4294967296;
   };
+}
+
+/** グラフ用アバターURL (サイズを64pxに抑えて帯域を節約) */
+function avatarForGraph(url: string | null | undefined): string {
+  if (!url) return DEFAULT_AVATAR_URL;
+  if (url.includes("size=")) return url.replace(/size=d+/, "size=64");
+  return url.includes("?") ? url + "&size=64" : url + "?size=64";
 }
 
 function hexToRgb(hex: string): [number, number, number] {
@@ -170,6 +181,7 @@ export default function RelationGraphView({
           size: 3 + 9 * Math.sqrt(node.count / maxCount),
           count: node.count,
           topChannel: node.top_channel,
+          image: avatarForGraph(node.avatar),
           x: (Math.random() - 0.5) * 100,
           y: (Math.random() - 0.5) * 100,
         });
@@ -282,6 +294,12 @@ export default function RelationGraphView({
       let hovered: string | null = null;
 
       sigma = new Sigma(graph, container, {
+        primitives: {
+          nodes: {
+            shapes: [sdfCircle()],
+            layers: [layerFill(), layerImage({ drawingMode: "image", imageAttribute: "image", padding: 0.06 })],
+          },
+        },
         settings: {
           labelDensity: 0.7,
           labelGridCellSize: 140,
@@ -298,8 +316,13 @@ export default function RelationGraphView({
             size: 0.4,
           },
         },
-        nodeReducer: ((node: string, data: Partial<Record<string, unknown>>) => {
-          const res: Record<string, unknown> = { ...data };
+        nodeReducer: ((
+          node: string,
+          data: Partial<Record<string, unknown>>,
+          attrs: Record<string, unknown>,
+        ) => {
+          // sigma v4のdisplay dataはカスタム属性を運ばないため、ここでimageを注入する
+          const res: Record<string, unknown> = { ...data, image: attrs.image };
           if (hovered) {
             if (node === hovered) {
               res.size = Number(data.size ?? 0) * 1.55;

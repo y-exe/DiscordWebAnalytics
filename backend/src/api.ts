@@ -2274,7 +2274,7 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
 
     const ttl = isAll ? 86400 : 600;
     const headers = { "Cache-Control": `public, max-age=${ttl}` };
-    const ckey = `graph_rel_v2_${guild.guildId}_${isAll ? "all" : `${yearParam}_${monthParam}`}`;
+    const ckey = `graph_rel_v3_${guild.guildId}_${isAll ? "all" : `${yearParam}_${monthParam}`}`;
     const cached = cache.get(ckey);
     if (cached !== undefined) return jsonResponse(cached, 200, headers);
 
@@ -2377,8 +2377,37 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
         if (weight >= 2) edges.push({ a: a.userId, b: b.userId, weight });
       }
     }
-    edges.sort((x, y) => y.weight - x.weight);
-    const limitedEdges = edges.slice(0, 8000);
+    // 関係がある人だけ線を引く: 各メンバーの絡み上位K件だけを残す
+    const topByNode = new Map<string, Array<{ a: string; b: string; weight: number }>>();
+    for (const edge of edges) {
+      let listA = topByNode.get(edge.a);
+      if (!listA) {
+        listA = [];
+        topByNode.set(edge.a, listA);
+      }
+      listA.push(edge);
+      let listB = topByNode.get(edge.b);
+      if (!listB) {
+        listB = [];
+        topByNode.set(edge.b, listB);
+      }
+      listB.push(edge);
+    }
+    const TOP_K = 4;
+    const keptKeys = new Set<string>();
+    for (const list of topByNode.values()) {
+      list.sort((x, y) => y.weight - x.weight);
+      for (const edge of list.slice(0, TOP_K)) {
+        keptKeys.add(edge.a < edge.b ? edge.a + "|" + edge.b : edge.b + "|" + edge.a);
+      }
+    }
+    const edgeByKey = new Map(
+      edges.map((edge) => [edge.a < edge.b ? edge.a + "|" + edge.b : edge.b + "|" + edge.a, edge]),
+    );
+    const limitedEdges = [...keptKeys]
+      .map((key) => edgeByKey.get(key))
+      .filter((edge) => edge !== undefined)
+      .sort((x, y) => y.weight - x.weight);
 
     const payload = {
       nodes: nodes.map((node) => {
