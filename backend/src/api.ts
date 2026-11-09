@@ -2274,7 +2274,7 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
 
     const ttl = isAll ? 86400 : 600;
     const headers = { "Cache-Control": `public, max-age=${ttl}` };
-    const ckey = `graph_rel_v5_${guild.guildId}_${isAll ? "all" : `${yearParam}_${monthParam}`}`;
+    const ckey = `graph_rel_v6_${guild.guildId}_${isAll ? "all" : `${yearParam}_${monthParam}`}`;
     const cached = cache.get(ckey);
     if (cached !== undefined) return jsonResponse(cached, 200, headers);
 
@@ -2327,25 +2327,6 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
       baseParams,
     );
 
-    // 時間帯ごとの活動分布 (喋る時間の一致度を測るために使用)
-    const { rows: hourRows } = await pool.query(
-      `SELECT m.user_id, EXTRACT(HOUR FROM m.created_at AT TIME ZONE 'Asia/Tokyo') AS hour, count(*) AS c
-       FROM messages m
-       WHERE m.guild_id = $1 AND m.is_bot = FALSE ${periodFilter}
-       GROUP BY m.user_id, hour`,
-      baseParams,
-    );
-    const hourHist = new Map<string, Map<number, number>>();
-    for (const raw of hourRows as Array<Record<string, unknown>>) {
-      const userId = String(raw.user_id);
-      let hist = hourHist.get(userId);
-      if (!hist) {
-        hist = new Map();
-        hourHist.set(userId, hist);
-      }
-      hist.set(Number(raw.hour), Number(raw.c));
-    }
-
     interface RelNode {
       userId: string;
       displayName: string;
@@ -2380,43 +2361,45 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
     const nodes = [...byUser.values()].sort((a, b) => b.count - a.count).slice(0, MAX_NODES);
     const nodeIds = new Set(nodes.map((node) => node.userId));
 
-    const edges: Array<{ a: string; b: string; weight: number }> = [];
-    for (let i = 0; i < nodes.length; i += 1) {
-      for (let j = i + 1; j < nodes.length; j += 1) {
-        const a = nodes[i];
-        const b = nodes[j];
-        // Σminが2未満の組み合わせは事前に除外 (高速化)
-        if (Math.min(a.count, b.count) < 2) continue;
-        const [smaller, larger] = a.channels.size <= b.channels.size ? [a, b] : [b, a];
-        // チャンネルの一致 × 発言量
-        let channelScore = 0;
-        for (const [cid, ca] of smaller.channels) {
-          const cb = larger.channels.get(cid);
-          if (cb) channelScore += Math.min(ca, cb);
-        }
-        if (channelScore < 2) continue;
-        // 喋る時間の一致度 (時間帯分布のコサイン類似度 0..1)
-        const ha = hourHist.get(a.userId);
-        const hb = hourHist.get(b.userId);
-        let timeScore = 0;
-        if (ha && hb) {
-          let dot = 0;
-          let na = 0;
-          let nb = 0;
-          for (let hour = 0; hour < 24; hour += 1) {
-            const va = ha.get(hour) ?? 0;
-            const vb = hb.get(hour) ?? 0;
-            dot += va * vb;
-            na += va * va;
-            nb += vb * vb;
-          }
-          if (na > 0 && nb > 0) timeScore = dot / Math.sqrt(na * nb);
-        }
-        // 同じ時間帯に活動している人ほど強い結び付きになる
-        const weight = Math.round(channelScore * (0.3 + 0.7 * timeScore));
-        if (weight >= 2) edges.push({ a: a.userId, b: b.userId, weight });
+    // 関係値 = 「同じ時間帯に同じチャンネルで発言した回数」(15分窓の共在回数)。
+    // メッセージの件数ではなく窓の数で数えるため、発言量そのものには依存しない。
+    const { rows: windowRows } = await pool.query(
+      `WITH slots AS (
+         SELECT DISTINCT m.channel_id,
+                FLOOR(EXTRACT(EPOCH FROM m.created_at) / 900)::bigint AS bucket,
+                m.user_id
+         FROM messages m
+         WHERE m.guild_id = $1 AND m.is_bot = FALSE ${periodFilter}
+       )
+       SELECT s1.user_id AS ua, s2.user_id AS ub, count(*) AS c
+       FROM slots s1
+       JOIN slots s2 ON s2.channel_id = s1.channel_id AND s2.bucket = s1.bucket AND s2.user_id <> s1.user_id
+       GROUP BY 1, 2
+       HAVING count(*) >= 2`,
+      baseParams,
+    );
+
+    // チャンネルの一致度 (活動の何割を共通チャンネルに費やしているか 0..1)
+    const overlapFraction = (a: RelNode, b: RelNode): number => {
+      if (!a.count || !b.count) return 0;
+      const [smaller, larger] = a.channels.size <= b.channels.size ? [a, b] : [b, a];
+      let shared = 0;
+      for (const [cid, ca] of smaller.channels) {
+        const cb = larger.channels.get(cid);
+        if (cb) shared += Math.min(ca / a.count, cb / b.count);
       }
+      return shared;
+    };
+
+    const edges: Array<{ a: string; b: string; weight: number }> = [];
+    for (const raw of windowRows as Array<Record<string, unknown>>) {
+      const a = byUser.get(String(raw.ua));
+      const b = byUser.get(String(raw.ub));
+      if (!a || !b) continue;
+      const weight = Math.round(Number(raw.c) * (0.7 + 0.3 * overlapFraction(a, b)));
+      if (weight >= 2) edges.push({ a: a.userId, b: b.userId, weight });
     }
+    edges.sort((x, y) => y.weight - x.weight);
     // 関係がある人だけ線を引く: 重みに下限を設け、さらに各メンバーの絡み上位K件だけを残す
     const maxWeightGlobal = edges[0]?.weight ?? 0;
     const minWeight = Math.max(10, Math.round(maxWeightGlobal * 0.005));
