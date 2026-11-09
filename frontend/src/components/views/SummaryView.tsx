@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Area,
   AreaChart,
+  Bar,
+  BarChart,
   CartesianGrid,
   ResponsiveContainer,
   Tooltip,
@@ -144,6 +146,21 @@ export default function SummaryView({
     return data.chart.map((point) => ({ label: shortDate(point.date), 発言数: point.total }));
   }, [data]);
 
+  const DOW_LABELS = ["日", "月", "火", "水", "木", "金", "土"];
+
+  const dowData = useMemo(() => {
+    const map = new Map((data?.heatmap ?? []).map((point) => [point.dow, point.count]));
+    return DOW_LABELS.map((label, dow) => ({ label, 発言数: map.get(dow) ?? 0 }));
+  }, [data]);
+
+  const hourData = useMemo(() => {
+    const map = new Map((data?.heatmap ?? []).map((point) => [point.hour, point.count]));
+    return Array.from({ length: 24 }, (_, hour) => ({
+      label: String(hour),
+      発言数: map.get(hour) ?? 0,
+    }));
+  }, [data]);
+
   const daysInPeriod = useMemo(() => {
     if (!year || !month) return null;
     if (isAll) {
@@ -193,13 +210,17 @@ export default function SummaryView({
 
   const topChannels = data.channels.slice(0, 6);
   const channelMax = topChannels[0]?.value ?? 1;
+  const avgChars = chars !== null && total > 0 ? Math.round(chars / total) : null;
+  const activeDays = data.chart.length;
+  const peakHour = data.analysis?.max_hour ?? null;
+  const busiestChannel = data.channels[0] ?? null;
 
   const period: Period = { key: isAll ? "all" : `${year}-${month}`, year, month, isAll };
 
   return (
     <div className="space-y-5">
       <PageToolbar
-        title={`${title}のサマリー`}
+        title={`${title}の統計`}
         subtitle="コミュニティの現状を把握しましょう"
         right={<PeriodPicker period={period} mode="path" />}
       />
@@ -301,6 +322,120 @@ export default function SummaryView({
                     </AreaChart>
                   </ResponsiveContainer>
                 </div>
+              </div>
+            ),
+          },
+          {
+            id: "distribution",
+            node: (
+              <div className="grid gap-4 lg:grid-cols-2">
+                <div className="app-card-padded">
+                  <p className="text-sm font-black text-foreground">曜日別の発言数</p>
+                  <div className="mt-3 h-56">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={dowData} margin={{ top: 4, right: 0, bottom: 0, left: 0 }}>
+                        <CartesianGrid vertical={false} stroke="rgba(148,155,166,0.22)" />
+                        <XAxis
+                          dataKey="label"
+                          tickLine={false}
+                          axisLine={false}
+                          tick={{ fontSize: 12, fill: "#9ca3af" }}
+                        />
+                        <YAxis
+                          tickLine={false}
+                          axisLine={false}
+                          tick={{ fontSize: 11, fill: "#9ca3af" }}
+                          width={48}
+                        />
+                        <Tooltip
+                          cursor={{ fill: "rgba(0,0,0,0.04)" }}
+                          contentStyle={{
+                            borderRadius: 12,
+                            border: "1px solid rgba(148,155,166,0.35)",
+                            fontSize: 12,
+                            fontWeight: 700,
+                            background: "var(--app-canvas)",
+                            color: "var(--app-sidebar-text-strong)",
+                          }}
+                          formatter={(value) => [`${Number(value).toLocaleString("ja-JP")}件`, ""]}
+                        />
+                        <Bar dataKey="発言数" fill="#3964fe" radius={[6, 6, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+                <div className="app-card-padded">
+                  <p className="text-sm font-black text-foreground">時間帯別の発言数</p>
+                  <div className="mt-3 h-56">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={hourData} margin={{ top: 4, right: 0, bottom: 0, left: 0 }}>
+                        <CartesianGrid vertical={false} stroke="rgba(148,155,166,0.22)" />
+                        <XAxis
+                          dataKey="label"
+                          tickLine={false}
+                          axisLine={false}
+                          tick={{ fontSize: 10, fill: "#9ca3af" }}
+                          interval={2}
+                        />
+                        <YAxis
+                          tickLine={false}
+                          axisLine={false}
+                          tick={{ fontSize: 11, fill: "#9ca3af" }}
+                          width={48}
+                        />
+                        <Tooltip
+                          cursor={{ fill: "rgba(0,0,0,0.04)" }}
+                          contentStyle={{
+                            borderRadius: 12,
+                            border: "1px solid rgba(148,155,166,0.35)",
+                            fontSize: 12,
+                            fontWeight: 700,
+                            background: "var(--app-canvas)",
+                            color: "var(--app-sidebar-text-strong)",
+                          }}
+                          formatter={(value) => [`${Number(value).toLocaleString("ja-JP")}件`, ""]}
+                          labelFormatter={(label) => `${label}時台`}
+                        />
+                        <Bar dataKey="発言数" fill="#3964fe" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              </div>
+            ),
+          },
+          {
+            id: "extra-kpis",
+            node: (
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <StatCard
+                  title="平均文字数/発言"
+                  value={avgChars ?? "—"}
+                  unit={avgChars === null ? undefined : "字"}
+                />
+                <StatCard
+                  title="ピーク時間帯"
+                  value={peakHour ? `${peakHour.hour}:00台` : "—"}
+                  unit={
+                    peakHour
+                      ? `${peakHour.count.toLocaleString("ja-JP")}件`
+                      : undefined
+                  }
+                />
+                <StatCard
+                  title="最も活発なチャンネル"
+                  value={busiestChannel ? `#${busiestChannel.name}` : "—"}
+                  unit={
+                    busiestChannel
+                      ? `${busiestChannel.value.toLocaleString("ja-JP")}件`
+                      : undefined
+                  }
+                />
+                <StatCard
+                  title="発言のあった日数"
+                  value={activeDays > 0 ? activeDays : "—"}
+                  unit={activeDays > 0 ? "日" : undefined}
+                />
               </div>
             ),
           },

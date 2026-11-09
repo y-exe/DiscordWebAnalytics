@@ -10,7 +10,7 @@ import {
 } from "./discord/DiscordIdentity";
 
 /** Discordのデフォルトアバター (脱退ユーザー等でアイコンURLが読めなくなった場合の代替) */
-const DEFAULT_AVATAR_URL = "https://cdn.discordapp.com/embed/avatars/1.png";
+export const DEFAULT_AVATAR_URL = "https://cdn.discordapp.com/embed/avatars/1.png";
 
 export function Avatar({
   src,

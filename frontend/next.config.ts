@@ -39,6 +39,7 @@ const nextConfig: NextConfig = {
       "/users/:path*",
       "/ranking/:path*",
       "/stats/:path*",
+      "/graph/:path*",
     ];
     // fallback (全ルート解決後) で適用する。afterFiles (配列形式) だと動的ルートより先に
     // マッチし、/channels/[channelId] 等のページがAPI転送に奪われてしまうため

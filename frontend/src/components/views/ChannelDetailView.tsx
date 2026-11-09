@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, CalendarClock, Hash, MessageSquare } from "lucide-react";
 import {
   Area,
   AreaChart,
@@ -16,6 +15,9 @@ import {
 } from "recharts";
 import PageToolbar from "@/components/shell/PageToolbar";
 import PeriodPicker from "@/components/shell/PeriodPicker";
+import StatCard from "./StatCard";
+import RankTopCard from "./RankTopCard";
+import HeatmapGrid from "./HeatmapGrid";
 import { UserAvatar } from "./discord/DiscordIdentity";
 import { fetchAPI } from "@/lib/api";
 import { formatDiscordDate } from "@/lib/discord-assets";
@@ -40,6 +42,8 @@ interface Insights {
   members: InsightsMember[];
   dow: Array<{ dow: number; count: number }>;
   hours: Array<{ hour: number; count: number }>;
+  heatmap: Array<{ dow: number; hour: number; count: number }>;
+  top_dates: Array<{ date: string; count: number }>;
   first_at: string | null;
   last_at: string | null;
 }
@@ -51,26 +55,15 @@ function shortDate(date: string): string {
   return `${Number(parts[1])}/${Number(parts[2])}`;
 }
 
-function KpiChip({ label, value, unit }: { label: string; value: string; unit?: string }) {
-  return (
-    <div className="app-card-padded min-w-36 flex-1 py-4">
-      <p className="text-xs font-bold text-muted-foreground">{label}</p>
-      <p className="mt-1 text-xl font-black tracking-tight text-foreground">
-        {value}
-        {unit && <span className="ml-1 text-xs font-bold text-muted-foreground">{unit}</span>}
-      </p>
-    </div>
-  );
-}
-
-function MetaRow({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
-  return (
-    <div className="flex items-center gap-2 text-sm">
-      <span className="text-muted-foreground">{icon}</span>
-      <span className="text-muted-foreground">{label}</span>
-      <span className="font-bold text-foreground">{value}</span>
-    </div>
-  );
+function sharedTooltipStyle(): React.CSSProperties {
+  return {
+    borderRadius: 12,
+    border: "1px solid rgba(148,155,166,0.35)",
+    fontSize: 12,
+    fontWeight: 700,
+    background: "var(--app-canvas)",
+    color: "var(--app-sidebar-text-strong)",
+  };
 }
 
 export default function ChannelDetailView({
@@ -109,9 +102,7 @@ export default function ChannelDetailView({
 
   const chartData = useMemo(
     () =>
-      data
-        ? data.daily.map((point) => ({ label: shortDate(point.date), 発言数: point.count }))
-        : [],
+      data ? data.daily.map((point) => ({ label: shortDate(point.date), 発言数: point.count })) : [],
     [data],
   );
 
@@ -130,6 +121,55 @@ export default function ChannelDetailView({
     }));
   }, [data]);
 
+  const statsCards = useMemo<
+    Array<{ title: string; value: string | number; unit?: string }> | null
+  >(() => {
+    if (!data || data.messages === 0) return null;
+    const avgChars = data.messages > 0 ? Math.round(data.chars / data.messages) : null;
+    const activeDays = data.daily.length;
+    const maxDaily = data.daily.reduce((max, point) => Math.max(max, point.count), 0);
+    return [
+      {
+        title: "発言数",
+        value: data.messages,
+        unit: "件",
+      },
+      {
+        title: "総文字数",
+        value: data.chars,
+        unit: "字",
+      },
+      {
+        title: "平均文字数/発言",
+        value: avgChars ?? "—",
+        unit: "字",
+      },
+      {
+        title: "参加メンバー",
+        value: data.users,
+        unit: "人",
+      },
+      {
+        title: "チャンネルランク",
+        value: data.rank ? `${data.rank}位` : "—",
+      },
+      {
+        title: "1日の最多発言",
+        value: maxDaily,
+        unit: "件",
+      },
+      {
+        title: "発言のあった日数",
+        value: activeDays,
+        unit: "日",
+      },
+      {
+        title: "最初の発言",
+        value: data.first_at ? formatDiscordDate(data.first_at) : "—",
+      },
+    ];
+  }, [data]);
+
   if (failed) {
     return (
       <div className="app-card-padded text-center text-sm text-muted-foreground">
@@ -141,13 +181,13 @@ export default function ChannelDetailView({
   if (!data) {
     return (
       <div className="space-y-4">
-        <div className="h-16 w-72 animate-pulse rounded-xl bg-muted" />
-        <div className="h-52 animate-pulse rounded-2xl bg-muted" />
-        <div className="flex gap-3">
-          {Array.from({ length: 3 }, (_, i) => (
-            <div key={i} className="h-20 flex-1 animate-pulse rounded-2xl bg-muted" />
+        <div className="h-9 w-64 animate-pulse rounded-xl bg-muted" />
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          {[0, 1, 2, 3].map((i) => (
+            <div key={i} className="h-44 animate-pulse rounded-2xl bg-muted" />
           ))}
         </div>
+        <div className="h-72 animate-pulse rounded-2xl bg-muted" />
       </div>
     );
   }
@@ -159,11 +199,12 @@ export default function ChannelDetailView({
           href={`/channels?m=${period.key}`}
           className="inline-flex items-center gap-1 text-sm font-bold text-muted-foreground hover:text-foreground"
         >
-          <ArrowLeft className="h-4 w-4" />
           チャンネル一覧へ戻る
         </Link>
         <div className="app-card-padded text-center text-sm text-muted-foreground">
-          この期間に発言記録のないチャンネルです。
+          {data.channel
+            ? `#${data.channel.name} はこの期間に発言記録のないチャンネルです。`
+            : "この期間に発言記録のないチャンネルです。"}
         </div>
       </div>
     );
@@ -174,65 +215,46 @@ export default function ChannelDetailView({
 
   return (
     <div className="space-y-5">
-      <Link
-        href={`/channels?m=${period.key}`}
-        className="inline-flex items-center gap-1 text-sm font-bold text-muted-foreground transition-colors hover:text-foreground"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        チャンネル一覧へ戻る
-      </Link>
-
       <PageToolbar
-        title={title}
-        subtitle="チャンネルの様子をより詳しく把握しましょう！"
+        title={`#${channel.name}`}
+        subtitle={`${title}のチャンネル統計`}
         right={<PeriodPicker period={period} mode="query" />}
       />
 
-      {/* チャンネルヘッダー */}
-      <div className="app-card overflow-hidden">
-        <div className="h-24 w-full bg-gradient-to-br from-[#3964fe33] to-[#3964fe66] md:h-28" />
-        <div className="px-5 pb-5 md:px-6">
-          <div className="-mt-9 mb-3 flex h-[4.5rem] w-[4.5rem] items-center justify-center rounded-2xl border-4 border-card bg-muted">
-            <Hash className="h-9 w-9 text-muted-foreground" aria-hidden="true" />
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <h2 className="text-xl font-black tracking-tight text-foreground md:text-2xl">
-              #{channel.name}
-            </h2>
-            <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-bold text-muted-foreground">
-              {channel.category}
-            </span>
-          </div>
-          <div className="mt-4 grid gap-x-6 gap-y-1.5 border-t border-border pt-4 text-sm md:grid-cols-2">
-            <MetaRow
-              icon={<MessageSquare className="h-4 w-4" aria-hidden="true" />}
-              label="最初の発言"
-              value={formatDiscordDate(data.first_at)}
-            />
-            <MetaRow
-              icon={<CalendarClock className="h-4 w-4" aria-hidden="true" />}
-              label="最後の発言"
-              value={formatDiscordDate(data.last_at)}
-            />
-          </div>
-        </div>
+      <div className="flex flex-wrap gap-2 text-xs font-bold text-muted-foreground">
+        {channel.category && (
+          <span className="rounded-full bg-muted px-2.5 py-0.5">{channel.category}</span>
+        )}
+        {data.rank && (
+          <span className="rounded-full bg-muted px-2.5 py-0.5">
+            全チャンネル中 {data.rank}位
+          </span>
+        )}
+        <span className="rounded-full bg-muted px-2.5 py-0.5">
+          最初 {data.first_at ? formatDiscordDate(data.first_at) : "—"}
+        </span>
+        <span className="rounded-full bg-muted px-2.5 py-0.5">
+          最後 {data.last_at ? formatDiscordDate(data.last_at) : "—"}
+        </span>
       </div>
 
-      <div className="flex flex-wrap gap-3">
-        <KpiChip label="発言数" value={data.messages.toLocaleString("ja-JP")} unit="件" />
-        <KpiChip label="総文字数" value={data.chars.toLocaleString("ja-JP")} unit="字" />
-        <KpiChip
-          label="平均文字数/発言"
-          value={data.messages > 0 ? String(Math.round(data.chars / data.messages)) : "—"}
-          unit="字"
-        />
-        <KpiChip label="参加メンバー" value={data.users.toLocaleString("ja-JP")} unit="人" />
-      </div>
+      {statsCards && (
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          {statsCards.map((card) => (
+            <StatCard
+              key={card.title}
+              title={card.title}
+              value={card.value}
+              unit={card.unit}
+            />
+          ))}
+        </div>
+      )}
 
       <div className="app-card-padded">
         <p className="text-sm font-black text-foreground">日別の発言数推移</p>
         <p className="mt-0.5 mb-4 text-xs font-bold text-muted-foreground">{title}の毎日の発言数</p>
-        <div className="h-64">
+        <div className="h-72">
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={chartData} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
               <CartesianGrid vertical={false} stroke="rgba(148,155,166,0.22)" />
@@ -250,14 +272,7 @@ export default function ChannelDetailView({
                 width={40}
               />
               <Tooltip
-                contentStyle={{
-                  borderRadius: 12,
-                  border: "1px solid rgba(148,155,166,0.35)",
-                  fontSize: 12,
-                  fontWeight: 700,
-                  background: "var(--app-canvas)",
-                  color: "var(--app-sidebar-text-strong)",
-                }}
+                contentStyle={sharedTooltipStyle()}
                 formatter={(value) => [`${Number(value).toLocaleString("ja-JP")}件`, ""]}
               />
               <Area
@@ -273,7 +288,78 @@ export default function ChannelDetailView({
         </div>
       </div>
 
+      <div className="app-card-padded">
+        <p className="text-sm font-black text-foreground">時間帯別アクティビティ</p>
+        <p className="mt-0.5 text-xs font-bold text-muted-foreground">
+          曜日 × 時間帯の発言集中度
+        </p>
+        <div className="mt-4">
+          <HeatmapGrid data={data.heatmap} />
+        </div>
+      </div>
+
       <div className="grid gap-4 lg:grid-cols-2">
+        <div className="app-card-padded">
+          <p className="text-sm font-black text-foreground">曜日別の発言数</p>
+          <div className="mt-3 h-56">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={dowData} margin={{ top: 4, right: 0, bottom: 0, left: 0 }}>
+                <CartesianGrid vertical={false} stroke="rgba(148,155,166,0.22)" />
+                <XAxis
+                  dataKey="label"
+                  tickLine={false}
+                  axisLine={false}
+                  tick={{ fontSize: 12, fill: "#979da6" }}
+                />
+                <YAxis
+                  tickLine={false}
+                  axisLine={false}
+                  tick={{ fontSize: 11, fill: "#979da6" }}
+                  width={40}
+                />
+                <Tooltip
+                  cursor={{ fill: "rgba(127,127,127,0.08)" }}
+                  contentStyle={sharedTooltipStyle()}
+                  formatter={(value) => [`${Number(value).toLocaleString("ja-JP")}件`, ""]}
+                />
+                <Bar dataKey="発言数" fill="#3964fe" radius={[6, 6, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+        <div className="app-card-padded">
+          <p className="text-sm font-black text-foreground">時間帯別の発言数</p>
+          <div className="mt-3 h-56">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={hourData} margin={{ top: 4, right: 0, bottom: 0, left: 0 }}>
+                <CartesianGrid vertical={false} stroke="rgba(148,155,166,0.22)" />
+                <XAxis
+                  dataKey="label"
+                  tickLine={false}
+                  axisLine={false}
+                  tick={{ fontSize: 10, fill: "#979da6" }}
+                  interval={2}
+                />
+                <YAxis
+                  tickLine={false}
+                  axisLine={false}
+                  tick={{ fontSize: 11, fill: "#979da6" }}
+                  width={40}
+                />
+                <Tooltip
+                  cursor={{ fill: "rgba(127,127,127,0.08)" }}
+                  contentStyle={sharedTooltipStyle()}
+                  formatter={(value) => [`${Number(value).toLocaleString("ja-JP")}件`, ""]}
+                  labelFormatter={(label) => `${label}時台`}
+                />
+                <Bar dataKey="発言数" fill="#3964fe" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         <div className="app-card-padded">
           <p className="text-sm font-black text-foreground">よく発言するメンバー</p>
           <p className="mt-0.5 mb-4 text-xs font-bold text-muted-foreground">
@@ -311,67 +397,18 @@ export default function ChannelDetailView({
           </ul>
         </div>
 
-        <div className="space-y-4">
-          <div className="app-card-padded">
-            <p className="text-sm font-black text-foreground">曜日別の発言数</p>
-            <div className="mt-3 h-36">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={dowData} margin={{ top: 4, right: 0, bottom: 0, left: 0 }}>
-                  <XAxis
-                    dataKey="label"
-                    tickLine={false}
-                    axisLine={false}
-                    tick={{ fontSize: 11, fill: "#979da6" }}
-                  />
-                  <YAxis hide />
-                  <Tooltip
-                    cursor={{ fill: "rgba(127,127,127,0.08)" }}
-                    contentStyle={{
-                      borderRadius: 12,
-                      border: "1px solid rgba(148,155,166,0.35)",
-                      fontSize: 12,
-                      fontWeight: 700,
-                      background: "var(--app-canvas)",
-                      color: "var(--app-sidebar-text-strong)",
-                    }}
-                    formatter={(value) => [`${Number(value).toLocaleString("ja-JP")}件`, ""]}
-                  />
-                  <Bar dataKey="発言数" fill="#3964fe" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-          <div className="app-card-padded">
-            <p className="text-sm font-black text-foreground">時間帯別の発言数</p>
-            <div className="mt-3 h-36">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={hourData} margin={{ top: 4, right: 0, bottom: 0, left: 0 }}>
-                  <XAxis
-                    dataKey="label"
-                    tickLine={false}
-                    axisLine={false}
-                    tick={{ fontSize: 10, fill: "#979da6" }}
-                    interval={2}
-                  />
-                  <YAxis hide />
-                  <Tooltip
-                    cursor={{ fill: "rgba(127,127,127,0.08)" }}
-                    contentStyle={{
-                      borderRadius: 12,
-                      border: "1px solid rgba(148,155,166,0.35)",
-                      fontSize: 12,
-                      fontWeight: 700,
-                      background: "var(--app-canvas)",
-                      color: "var(--app-sidebar-text-strong)",
-                    }}
-                    formatter={(value) => [`${Number(value).toLocaleString("ja-JP")}件`, ""]}
-                    labelFormatter={(label) => `${label}時台`}
-                  />
-                  <Bar dataKey="発言数" fill="#3964fe" radius={[3, 3, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
+        <div className="md:col-span-2">
+          <RankTopCard
+            title="最多発言日"
+            note="このチャンネルで最も盛り上がった日 トップ5"
+            unit="件"
+            emptyText="データがありません"
+            items={data.top_dates.map((entry) => ({
+              user_id: `date-${entry.date}`,
+              display_name: entry.date.replaceAll("-", "/"),
+              count: entry.count,
+            }))}
+          />
         </div>
       </div>
     </div>

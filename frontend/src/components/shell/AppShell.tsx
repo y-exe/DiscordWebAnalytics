@@ -4,18 +4,19 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
-  BarChart3,
   ChartColumn,
   GitCompareArrows,
   Hash,
   Menu,
   Moon,
+  Share2,
   Sun,
   Users,
   X,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { periodHref, parsePeriod, type Period } from "@/lib/period";
+import { fetchAPI } from "@/lib/api";
 import UserArea from "./UserArea";
 
 export interface GuildBrand {
@@ -25,12 +26,46 @@ export interface GuildBrand {
 }
 
 const NAV_ITEMS = [
-  { key: "summary", label: "サマリー", Icon: ChartColumn },
-  { key: "channels", label: "チャンネル", Icon: Hash },
+  { key: "summary", label: "統計", Icon: ChartColumn },
   { key: "members", label: "メンバー", Icon: Users },
+  { key: "relation", label: "関係性", Icon: Share2 },
   { key: "compare", label: "比較", Icon: GitCompareArrows },
-  { key: "stats", label: "統計", Icon: BarChart3 },
+  { key: "channels", label: "チャンネル", Icon: Hash },
 ] as const;
+
+interface SidebarChannel {
+  id: string;
+  name: string;
+  category: string;
+}
+
+/** サイドバー下部のチャンネル一覧 (スレッドは親に集約済みなので除外) */
+function useSidebarChannels(): SidebarChannel[] {
+  const [channels, setChannels] = useState<SidebarChannel[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    fetchAPI("/channels")
+      .then(async (res) => {
+        if (!res.ok) return;
+        const body = (await res.json()) as Array<{
+          id: string;
+          name: string;
+          category: string;
+        }>;
+        if (cancelled) return;
+        setChannels(
+          body
+            .filter((channel) => !channel.name.includes(" / "))
+            .map((channel) => ({ id: channel.id, name: channel.name, category: channel.category })),
+        );
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  return channels;
+}
 
 /** 現在のURLから期間とパスモードを解決する */
 export function resolveCurrentPeriod(
@@ -74,25 +109,52 @@ function NavList({
   period: Period;
   onNavigate?: () => void;
 }) {
+  const channels = useSidebarChannels();
   return (
     <nav aria-label="メインナビゲーション" className="flex flex-col gap-1 px-3">
       {NAV_ITEMS.map(({ key, label, Icon }) => {
         const active = isNavActive(key, pathname);
         return (
-          <Link
-            key={key}
-            href={navHref(key, period)}
-            onClick={onNavigate}
-            aria-current={active ? "page" : undefined}
-            className={`flex items-center gap-3 rounded-xl px-4 py-2.5 text-sm font-bold transition-colors ${
-              active
-                ? "bg-sidebar-active text-sidebar-text-strong"
-                : "text-sidebar-text hover:bg-sidebar-hover hover:text-sidebar-text-strong"
-            }`}
-          >
-            <Icon className="h-4.5 w-4.5 shrink-0" aria-hidden="true" />
-            {label}
-          </Link>
+          <div key={key}>
+            <Link
+              href={navHref(key, period)}
+              onClick={onNavigate}
+              aria-current={active ? "page" : undefined}
+              className={`flex items-center gap-3 rounded-xl px-4 py-2.5 text-sm font-bold transition-colors ${
+                active
+                  ? "bg-sidebar-active text-sidebar-text-strong"
+                  : "text-sidebar-text hover:bg-sidebar-hover hover:text-sidebar-text-strong"
+              }`}
+            >
+              <Icon className="h-4.5 w-4.5 shrink-0" aria-hidden="true" />
+              {label}
+            </Link>
+            {key === "channels" && channels.length > 0 && (
+              <div className="mt-1 max-h-72 space-y-0.5 overflow-y-auto pb-1 pl-9 pr-2">
+                {channels.map((channel) => {
+                  const channelActive =
+                    pathname === `/channels/${channel.id}` ||
+                    pathname.startsWith(`/channels/${channel.id}/`);
+                  return (
+                    <Link
+                      key={channel.id}
+                      href={`/channels/${channel.id}?m=${period.key}`}
+                      onClick={onNavigate}
+                      aria-current={channelActive ? "page" : undefined}
+                      title={channel.name}
+                      className={`block truncate rounded-lg px-2 py-1 text-xs font-bold transition-colors ${
+                        channelActive
+                          ? "bg-sidebar-active text-sidebar-text-strong"
+                          : "text-sidebar-text hover:bg-sidebar-hover hover:text-sidebar-text-strong"
+                      }`}
+                    >
+                      {channel.name}
+                    </Link>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         );
       })}
     </nav>

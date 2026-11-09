@@ -31,7 +31,7 @@ import { dashboardBaseUrl, normalizeHost, resolveGuildByHost, type GuildContext 
 
 export const PUBLIC_PATHS = new Set(["/", "/health", "/docs", "/openapi.json", "/favicon.ico"]);
 const WRITE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
-const DB_HEAVY_PREFIXES = ["/ranking", "/stats", "/users"];
+const DB_HEAVY_PREFIXES = ["/ranking", "/stats", "/users", "/graph"];
 const LIVE_TOTAL_CACHE_TTL = 1800;
 export const TOTAL_CACHE_WARM_INTERVAL_MS = 600 * 1000;
 
@@ -2065,6 +2065,8 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
       }>,
       dow: [] as Array<{ dow: number; count: number }>,
       hours: [] as Array<{ hour: number; count: number }>,
+      heatmap: [] as Array<{ dow: number; hour: number; count: number }>,
+      top_dates: [] as Array<{ date: string; count: number }>,
       first_at: null,
       last_at: null,
     };
@@ -2106,7 +2108,7 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
       periodFilter = "AND created_at >= $3 AND created_at < $4";
     }
 
-    const [summaryRes, dailyRes, dowRes, hoursRes, membersRes] = await Promise.all([
+    const [summaryRes, dailyRes, dowRes, hoursRes, heatRes, membersRes] = await Promise.all([
       pool.query(
         `SELECT count(*) AS messages, COALESCE(sum(char_count), 0) AS chars,
                 count(DISTINCT user_id) AS users,
@@ -2128,6 +2130,13 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
       pool.query(
         `SELECT EXTRACT(HOUR FROM created_at AT TIME ZONE 'Asia/Tokyo') AS hour, count(*) AS c
          FROM messages WHERE guild_id = $1 AND channel_id = ANY($2::bigint[]) AND is_bot = FALSE ${periodFilter} GROUP BY hour`,
+        baseParams,
+      ),
+      pool.query(
+        `SELECT EXTRACT(DOW FROM created_at AT TIME ZONE 'Asia/Tokyo') AS dow,
+                EXTRACT(HOUR FROM created_at AT TIME ZONE 'Asia/Tokyo') AS hour, count(*) AS c
+         FROM messages WHERE guild_id = $1 AND channel_id = ANY($2::bigint[]) AND is_bot = FALSE ${periodFilter}
+         GROUP BY dow, hour`,
         baseParams,
       ),
       pool.query(
@@ -2215,6 +2224,15 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
       })),
       dow: dowRes.rows.map((row) => ({ dow: Number(row.dow), count: Number(row.c) })),
       hours: hoursRes.rows.map((row) => ({ hour: Number(row.hour), count: Number(row.c) })),
+      heatmap: heatRes.rows.map((row) => ({
+        dow: Number(row.dow),
+        hour: Number(row.hour),
+        count: Number(row.c),
+      })),
+      top_dates: [...dailyRes.rows]
+        .map((row) => ({ date: String(row.d), count: Number(row.c) }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 5),
       first_at: summaryRes.rows[0]?.first_at
         ? new Date(summaryRes.rows[0].first_at as string).toISOString()
         : null,
@@ -2228,6 +2246,166 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
 
   app.get("/channels/:channelId/insights/:year/:month", (c) => channelInsights(c, false));
   app.get("/channels/:channelId/insights/total", (c) => channelInsights(c, true));
+
+  /**
+   * 関係性グラフ: 同じチャンネルでの発言量 (共活性) を元にしたメンバー間の結び付き。
+   * エッジの重みは Σ(チャンネルごとの発言数の小さい方) で、両方がそのチャンネルで
+   * 話しているほど強く結ばれることを表す。
+   */
+  const graphRelation = async (c: Context, isAll: boolean) => {
+    const guildOrError = await requireGuild(c);
+    if (guildOrError instanceof Response) return guildOrError;
+    const guild = guildOrError;
+
+    let startDate: Date | null = null;
+    let endDate: Date | null = null;
+    let yearParam = "";
+    let monthParam = "";
+    if (!isAll) {
+      yearParam = c.req.param("year") ?? "";
+      monthParam = c.req.param("month") ?? "";
+      const year = pathInt(yearParam);
+      const month = pathInt(monthParam);
+      if (year === null || month === null) return jsonError(422, "Invalid path parameter");
+      const bounds = monthBounds(year, month);
+      if (!Array.isArray(bounds)) return jsonError(400, bounds);
+      [startDate, endDate] = bounds;
+    }
+
+    const ttl = isAll ? 86400 : 600;
+    const headers = { "Cache-Control": `public, max-age=${ttl}` };
+    const ckey = `graph_rel_${guild.guildId}_${isAll ? "all" : `${yearParam}_${monthParam}`}`;
+    const cached = cache.get(ckey);
+    if (cached !== undefined) return jsonResponse(cached, 200, headers);
+
+    const pool = deps.getPool();
+    if (!pool) return jsonError(503, "Service unavailable.");
+
+    const MAX_NODES = 48;
+    const baseParams: unknown[] = [guild.guildId];
+    let periodFilter = "";
+    if (startDate && endDate) {
+      baseParams.push(startDate, endDate);
+      periodFilter = "AND m.created_at >= $2 AND m.created_at < $3";
+    }
+
+    // スレッド ("親 / スレ名") は親チャンネルへ集約する
+    const { rows: channelRows } = await pool.query(
+      "SELECT channel_id, name FROM channels WHERE guild_id = $1 AND is_active = TRUE",
+      [guild.guildId],
+    );
+    const channelRowsTyped = channelRows as Array<Record<string, unknown>>;
+    const nameToId = new Map<string, string>();
+    for (const row of channelRowsTyped) nameToId.set(String(row.name), String(row.channel_id));
+    const idToName = new Map<string, string>();
+    for (const row of channelRowsTyped) idToName.set(String(row.channel_id), String(row.name));
+    const parentOf = new Map<string, string>();
+    for (const row of channelRowsTyped) {
+      const name = String(row.name);
+      const sep = name.indexOf(" / ");
+      if (sep <= 0) continue;
+      const parent = nameToId.get(name.slice(0, sep));
+      if (parent && parent !== String(row.channel_id)) parentOf.set(String(row.channel_id), parent);
+    }
+    const normChannel = (id: string): string => {
+      let current = id;
+      for (let i = 0; i < 10 && parentOf.has(current); i += 1) current = parentOf.get(current) as string;
+      return current;
+    };
+
+    const { rows: activityRows } = await pool.query(
+      `SELECT m.user_id, COALESCE(gm.display_name, u.display_name, u.username) AS display_name,
+              u.username, u.avatar_url, u.avatar_decoration_url, m.channel_id, count(*) AS c
+       FROM messages m
+       JOIN guild_members gm ON gm.guild_id = m.guild_id AND gm.user_id = m.user_id
+       JOIN users u ON u.user_id = m.user_id
+       WHERE m.guild_id = $1 AND m.is_bot = FALSE ${periodFilter}
+         AND ${DELETED_USER_FILTER}
+         AND gm.display_name NOT ILIKE 'deleted%user'
+       GROUP BY m.user_id, gm.display_name, u.display_name, u.username, u.avatar_url, u.avatar_decoration_url, m.channel_id
+       HAVING count(*) >= 2`,
+      baseParams,
+    );
+
+    interface RelNode {
+      userId: string;
+      displayName: string;
+      username: string;
+      avatar: string | null;
+      avatarDecoration: string | null;
+      count: number;
+      channels: Map<string, number>;
+    }
+    const byUser = new Map<string, RelNode>();
+    for (const raw of activityRows as Array<Record<string, unknown>>) {
+      const userId = String(raw.user_id);
+      const count = Number(raw.c);
+      let node = byUser.get(userId);
+      if (!node) {
+        node = {
+          userId,
+          displayName: (raw.display_name as string) || "Unknown",
+          username: (raw.username as string) || "unknown",
+          avatar: (raw.avatar_url as string | null) ?? null,
+          avatarDecoration: (raw.avatar_decoration_url as string | null) ?? null,
+          count: 0,
+          channels: new Map(),
+        };
+        byUser.set(userId, node);
+      }
+      node.count += count;
+      const cid = normChannel(String(raw.channel_id));
+      node.channels.set(cid, (node.channels.get(cid) ?? 0) + count);
+    }
+
+    const nodes = [...byUser.values()].sort((a, b) => b.count - a.count).slice(0, MAX_NODES);
+    const nodeIds = new Set(nodes.map((node) => node.userId));
+
+    const edges: Array<{ a: string; b: string; weight: number }> = [];
+    for (let i = 0; i < nodes.length; i += 1) {
+      for (let j = i + 1; j < nodes.length; j += 1) {
+        const a = nodes[i];
+        const b = nodes[j];
+        const [smaller, larger] = a.channels.size <= b.channels.size ? [a, b] : [b, a];
+        let weight = 0;
+        for (const [cid, ca] of smaller.channels) {
+          const cb = larger.channels.get(cid);
+          if (cb) weight += Math.min(ca, cb);
+        }
+        if (weight >= 2) edges.push({ a: a.userId, b: b.userId, weight });
+      }
+    }
+    edges.sort((x, y) => y.weight - x.weight);
+    const limitedEdges = edges.slice(0, 320);
+
+    const payload = {
+      nodes: nodes.map((node) => {
+        let topChannelId: string | null = null;
+        let topCount = 0;
+        for (const [cid, count] of node.channels) {
+          if (count > topCount) {
+            topCount = count;
+            topChannelId = cid;
+          }
+        }
+        return {
+          user_id: node.userId,
+          display_name: node.displayName,
+          username: node.username,
+          avatar: node.avatar,
+          avatar_decoration: node.avatarDecoration,
+          count: node.count,
+          top_channel: topChannelId ? (idToName.get(topChannelId) ?? null) : null,
+        };
+      }),
+      edges: limitedEdges,
+    };
+    cache.set(ckey, payload, ttl);
+    return jsonResponse(payload, 200, headers);
+  };
+
+  app.get("/graph/relation/:year/:month", (c) => graphRelation(c, false));
+  app.get("/graph/relation/total", (c) => graphRelation(c, true));
 
   /**
    * Caddy on-demand TLSのaskエンドポイント。

@@ -12,7 +12,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const [guild, baseUrl] = await Promise.all([getGuildContext(), getGuildBaseUrl()]);
   const targetYear = Number(year);
   const targetMonth = Number(month);
-  const title = `${targetYear}年${targetMonth}月のサマリー`;
+  const title = `${targetYear}年${targetMonth}月の統計`;
   const subject = guild.name || "Discordサーバー";
   const description = `${targetYear}年${targetMonth}月の${subject}の活動データです。`;
   const url = `${baseUrl ?? "https://ymkw.top"}/month/${targetYear}/${targetMonth}`;
