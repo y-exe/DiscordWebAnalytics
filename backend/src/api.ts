@@ -2274,7 +2274,7 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
 
     const ttl = isAll ? 86400 : 600;
     const headers = { "Cache-Control": "no-store" };
-    const ckey = `graph_rel_v6_${guild.guildId}_${isAll ? "all" : `${yearParam}_${monthParam}`}`;
+    const ckey = `graph_rel_v7_${guild.guildId}_${isAll ? "all" : `${yearParam}_${monthParam}`}`;
     const cached = cache.get(ckey);
     if (cached !== undefined) return jsonResponse(cached, 200, headers);
 
@@ -2419,30 +2419,30 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
       }
       listB.push(edge);
     }
-    // 線の本数は発言数に比例させる (logスケール: 1件なら1本、上位者は最大10本)
+    // 線の本数は発言数に比例させる (logスケール: 1件なら1本、上位者は最大10本)。
+    // かつ「双方が互いに上位に入れている」結び付きのみ残す (一方的な指名で
+    // 中心的メンバーに大量の線が集まるのを防ぐ)。
     const countByNode = new Map(nodes.map((node) => [node.userId, node.count]));
     const edgeBudgetOf = (userId: string): number => {
       const count = countByNode.get(userId) ?? 0;
       return Math.max(1, Math.min(10, Math.ceil(Math.log2(count + 1))));
     };
-    const keptKeys = new Set<string>();
+    const limitedEdges: typeof edges = [];
     for (const [userId, list] of topByNode) {
       list.sort((x, y) => y.weight - x.weight);
       const budget = edgeBudgetOf(userId);
-      for (const edge of list.slice(0, budget)) {
-        keptKeys.add(edge.a < edge.b ? edge.a + "|" + edge.b : edge.b + "|" + edge.a);
+      for (let index = 0; index < Math.min(budget, list.length); index += 1) {
+        const edge = list[index];
+        const other = edge.a === userId ? edge.b : edge.a;
+        const otherList = topByNode.get(other);
+        if (!otherList) continue;
+        const otherIndex = otherList.indexOf(edge);
+        if (otherIndex >= 0 && otherIndex < edgeBudgetOf(other)) {
+          if (userId < other) limitedEdges.push(edge);
+        }
       }
     }
-    const edgeByKey = new Map(
-      significantEdges.map((edge) => [
-        edge.a < edge.b ? edge.a + "|" + edge.b : edge.b + "|" + edge.a,
-        edge,
-      ]),
-    );
-    const limitedEdges = [...keptKeys]
-      .map((key) => edgeByKey.get(key))
-      .filter((edge) => edge !== undefined)
-      .sort((x, y) => y.weight - x.weight);
+    limitedEdges.sort((x, y) => y.weight - x.weight);
 
     const payload = {
       nodes: nodes.map((node) => {
