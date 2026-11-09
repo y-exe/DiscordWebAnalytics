@@ -101,9 +101,6 @@ interface CommunityInfo {
 interface SigmaLike {
   kill(): void;
   refresh(options?: { skipIndexation?: boolean }): void;
-  getCamera(): {
-    setState(state: { x?: number; y?: number; ratio?: number; angle?: number }): void;
-  };
   on(event: string, handler: (payload: { node: string; edge?: string }) => void): SigmaLike;
 }
 
@@ -391,26 +388,6 @@ export default function RelationGraphView({
           return res;
         }) as unknown as EdgeReducer,
       }) as unknown as SigmaLike;
-
-      // グラフ全体が収まるようにカメラを合わせる
-      let minX = Infinity;
-      let maxX = -Infinity;
-      let minY = Infinity;
-      let maxY = -Infinity;
-      graph.forEachNode((_node, attrs) => {
-        minX = Math.min(minX, attrs.x);
-        maxX = Math.max(maxX, attrs.x);
-        minY = Math.min(minY, attrs.y);
-        maxY = Math.max(maxY, attrs.y);
-      });
-      const width = Math.max(maxX - minX, 1);
-      const height = Math.max(maxY - minY, 1);
-      sigma.getCamera().setState({
-        x: (minX + maxX) / 2,
-        y: (minY + maxY) / 2,
-        ratio: Math.max(width, height) * 1.1,
-        angle: 0,
-      });
 
       sigma.on("enterNode", ({ node }) => {
         hovered = node;
