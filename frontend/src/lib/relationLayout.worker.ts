@@ -10,6 +10,7 @@ interface WorkerNode {
   id: string;
   x: number;
   y: number;
+  size: number;
 }
 
 interface WorkerEdge {
@@ -34,7 +35,7 @@ ctx.addEventListener("message", (event: MessageEvent) => {
   try {
     const graph = new Graph({ type: "undirected", multi: false, allowSelfLoops: false });
     for (const node of nodes) {
-      graph.addNode(node.id, { x: node.x, y: node.y, size: 5 });
+      graph.addNode(node.id, { x: node.x, y: node.y, size: node.size ?? 5 });
     }
     for (const edge of edges) {
       if (!graph.hasEdge(edge.source, edge.target)) {
@@ -70,8 +71,8 @@ ctx.addEventListener("message", (event: MessageEvent) => {
       }
 
       noverlap.assign(graph, {
-        maxIterations: 60,
-        settings: { ratio: 1.1, margin: 3, gridSize: 30 },
+        maxIterations: 120,
+        settings: { ratio: 1.6, margin: 14, gridSize: 40 },
       });
 
       const positions: Record<string, { x: number; y: number }> = {};

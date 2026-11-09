@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTheme } from "next-themes";
 import Graph from "graphology";
+import { layerBorder } from "@sigma/node-border";
 import { layerImage } from "@sigma/node-image";
 import { layerFill, sdfCircle } from "sigma/rendering";
 import type { Attributes } from "graphology-types";
@@ -101,7 +102,7 @@ interface CommunityInfo {
 interface SigmaLike {
   kill(): void;
   refresh(options?: { skipIndexation?: boolean }): void;
-  on(event: string, handler: (payload: { node: string; edge?: string }) => void): SigmaLike;
+  on(event: string, handler: (payload: { node?: string; edge?: string; event?: unknown }) => void): SigmaLike;
 }
 
 export default function RelationGraphView({
@@ -117,7 +118,12 @@ export default function RelationGraphView({
   const [layoutRunning, setLayoutRunning] = useState(false);
   const [layoutProgress, setLayoutProgress] = useState(0);
   const [communities, setCommunities] = useState<CommunityInfo[]>([]);
-  const [focused, setFocused] = useState<{ id: string; label: string } | null>(null);
+  const [focused, setFocused] = useState<{
+    id: string;
+    label: string;
+    x: number;
+    y: number;
+  } | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const sigmaRef = useRef<SigmaLike | null>(null);
   const workerRef = useRef<Worker | null>(null);
@@ -175,7 +181,7 @@ export default function RelationGraphView({
       for (const node of data.nodes) {
         graph.addNode(node.user_id, {
           label: node.display_name,
-          size: 6 + 24 * (Math.log(1 + node.count) / Math.log(1 + maxCount)),
+          size: 4 + 41 * (Math.log(1 + node.count) / Math.log(1 + maxCount)),
           count: node.count,
           topChannel: node.top_channel,
           image: avatarForGraph(node.avatar),
@@ -254,6 +260,7 @@ export default function RelationGraphView({
           id: node.user_id,
           x: graph.getNodeAttribute(node.user_id, "x"),
           y: graph.getNodeAttribute(node.user_id, "y"),
+          size: graph.getNodeAttribute(node.user_id, "size"),
         })),
         edges: data.edges.map((edge) => ({ source: edge.a, target: edge.b })),
         iterations: 800,
@@ -329,13 +336,22 @@ export default function RelationGraphView({
         primitives: {
           nodes: {
             shapes: [sdfCircle()],
-            layers: [layerFill(), layerImage({ drawingMode: "image", imageAttribute: "image", padding: 0.06 })],
+            layers: [
+              // 外側にコミュニティ色の縁取り、内側にアバター画像
+              layerBorder({
+                borders: [
+                  { size: 0.14, color: { attribute: "borderColor" }, mode: "relative" },
+                  { size: 0, color: { attribute: "color" }, fill: true },
+                ],
+              }),
+              layerImage({ drawingMode: "image", imageAttribute: "image", padding: 0.14 }),
+            ],
           },
         },
         settings: {
           labelDensity: 0.7,
           labelGridCellSize: 140,
-          labelRenderedSizeThreshold: 10,
+          labelRenderedSizeThreshold: 6,
           minCameraRatio: 0.08,
           maxCameraRatio: 12,
         },
@@ -353,18 +369,25 @@ export default function RelationGraphView({
           data: Partial<Record<string, unknown>>,
           attrs: Record<string, unknown>,
         ) => {
-          // sigma v4のdisplay dataはカスタム属性を運ばないため、ここでimageを注入する
-          const res: Record<string, unknown> = { ...data, image: attrs.image };
+          // sigma v4のdisplay dataはカスタム属性を運ばないため、ここでimage/borderColorを注入する
+          const res: Record<string, unknown> = {
+            ...data,
+            image: attrs.image,
+            borderColor: attrs.color,
+          };
           if (hovered) {
             if (node === hovered) {
               res.size = Number(data.size ?? 0) * 1.55;
               res.forceLabel = true;
               res.zIndex = 2;
             } else if (neighborSet.has(node)) {
+              // 関係がある人たちの名前をすべて表示する
               res.forceLabel = true;
+              res.labelVisibility = "visible";
               res.zIndex = 1;
             } else {
               res.color = dimColor(String(data.color ?? neutralColor), backgroundColor, 0.9);
+              res.borderColor = dimColor(String(attrs.color ?? neutralColor), backgroundColor, 0.9);
             }
           }
           return res;
@@ -390,7 +413,7 @@ export default function RelationGraphView({
       }) as unknown as SigmaLike;
 
       sigma.on("enterNode", ({ node }) => {
-        hovered = node;
+        hovered = node ?? null;
         neighborSet.clear();
         graph.forEachNeighbor(node, (neighbor) => neighborSet.add(neighbor));
         sigma?.refresh();
@@ -400,9 +423,22 @@ export default function RelationGraphView({
         neighborSet.clear();
         sigma?.refresh();
       });
-      sigma.on("clickNode", ({ node }) => {
+      sigma.on("clickNode", ({ node, event }) => {
+        if (typeof node !== "string") return;
         const attrs = graph.getNodeAttributes(node);
-        setFocused({ id: node, label: String(attrs.label ?? "") });
+        const original = (event as { original?: MouseEvent | TouchEvent }).original ?? undefined;
+        let x = 0;
+        let y = 0;
+        if (original) {
+          const rect = container.getBoundingClientRect();
+          const point =
+            original instanceof MouseEvent
+              ? { clientX: original.clientX, clientY: original.clientY }
+              : (original.changedTouches?.[0] ?? ({ clientX: rect.left, clientY: rect.top } as Touch));
+          x = point.clientX - rect.left;
+          y = point.clientY - rect.top;
+        }
+        setFocused({ id: node, label: String(attrs.label ?? ""), x, y });
       });
 
       sigmaRef.current = sigma;
@@ -490,8 +526,15 @@ export default function RelationGraphView({
                 </div>
               </div>
             )}
-            {focusedNode && (
-              <div className="absolute right-4 top-4 w-56 rounded-xl border border-border bg-card p-4 shadow-lg">
+            {focusedNode && focused && (() => {
+              const width = containerRef.current?.clientWidth ?? 800;
+              const left = Math.min(Math.max(focused.x + 18, 8), Math.max(width - 240, 8));
+              const top = Math.min(Math.max(focused.y - 20, 8), 480);
+              return (
+              <div
+                className="absolute z-20 w-60 rounded-xl border border-border bg-card p-4 shadow-lg"
+                style={{ left, top }}
+              >
                 <div className="flex items-start justify-between gap-2">
                   <p className="text-sm font-black leading-snug text-foreground">
                     {focusedNode.display_name}
@@ -516,7 +559,8 @@ export default function RelationGraphView({
                   メンバー詳細へ
                 </a>
               </div>
-            )}
+              );
+            })()}
           </div>
 
           <div className="space-y-4">
