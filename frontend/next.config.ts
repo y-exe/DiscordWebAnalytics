@@ -14,6 +14,16 @@ const nextConfig: NextConfig = {
   // WorkersビルドはOpenNextがアプリ相対のレイアウトを前提とするためoutput設定のみ切替。
   ...(process.env.BUILD_STANDALONE === "true" ? { output: "standalone" as const } : {}),
   reactStrictMode: true,
+  // URL統一: 旧パス形式→ /?m= クエリ形式への後方互換リダイレクト。
+  // Server Component の permanentRedirect はメタ更新フォールバックになるため
+  // HTTP 308/307 で返せる config redirects で処理する (render前リダイレクト)。
+  async redirects() {
+    return [
+      { source: "/month/:year/:month", destination: "/?m=:year-:month", permanent: true },
+      { source: "/month/latest", destination: "/", permanent: false },
+      { source: "/all", destination: "/?m=all", permanent: true },
+    ];
+  },
   async headers() {
     return [
       {
