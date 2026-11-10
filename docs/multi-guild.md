@@ -122,7 +122,7 @@ CREATE TABLE guild_members (
 - バックエンド配線は `backend/src/runtime.ts` (`createBackendRuntime()`) に集約: loadConfig → pgプール → ログイン制限初期化 → SafeDiskCache → `createApp()`。プロセス内シングルトンで再構築しない
 - `backend/src/main.ts` (Bun.serve) は過渡期の単独起動用として無変更のまま残す。k3s移行完了後に削除してよい
 - SSRは `API_URL=http://127.0.0.1:4321/api` (セルフループバック、`/api` プレフィックス付き) でAPIを呼ぶ。`x-forwarded-host` によりギルド解決は元ページのHostで行われる
-- `peerIp` はNextのroute handlerではソケットIPが取得できないため **X-Forwarded-For の末尾** (直近プロキシが見た直接ピア) を渡す。DNS-only独自ドメイン経由のレート制限品位の整理はフェーズ6 (エッジ構築時) に併せて実施
+- `peerIp` はNextのroute handlerではソケットIPが取得できないためXFFから導出する。**実装済み** (`backend/src/runtime.ts` の `deriveMountedRequestEnv`): XFF末尾が信頼エッジ (VPS Nginx/Caddy = `10.77.0.1`) なら先頭要素を実クライアントとしCF-Connecting-IPを信頼 (`trustedPeer`)、それ以外 (LAN直叩き等) は末尾ピアを採用してCFヘッダーを無視する。偽装はTraefikが直接ピアを末尾に追加するため成立しない
 - ウォームループは `frontend/src/instrumentation.ts` が同一オリジン運用 (`NEXT_PUBLIC_SAME_ORIGIN=true`) かつnodejsランタイムのときに起動
 - 統合コンテナには `DB_DSN` / `API_SECRET` / `ADMIN_SESSION_SECRET` / `ADMIN_PASSWORD_HASH` をk8s Secret等で与える (`backend/.env` は存在しないためprocess.envで読む)
 - next.config: `BUILD_STANDALONE=true` 時は `output: standalone` かつ `outputFileTracingRoot` = monorepoルート (standaloneに `frontend/server.js` とトレースされた `backend/` が並ぶ)。WorkersビルドはOpenNextがアプリ相対レイアウトを前提とするためアプリ配下に固定
@@ -185,7 +185,8 @@ CREATE TABLE guild_members (
 | 4.8 | ホームページ独立リポジトリ化: `y-exe/ymkw.top` (Vue 3 + Vite) へ切り出し、Cloudflare Pagesで配信 | ✅ 完了 |
 | 5 | Discord OAuth: 中央コールバック + ギルドスコープセッション | 保留 |
 | 6a | インフラ: k3s manifests (Deployment/Ingress/SOPS secret/NetworkPolicy)、統合コンテナ本番デプロイ、Traefik経由SSR+API検証 | ✅ 完了 |
-| 6b | インフラ: VPS Nginx stream SNI分岐 + Caddy (on-demand TLS) 導入 | 未 (DNS・証明書はCaddy依存) |
+| 6b | インフラ: Caddy導入 (VPS, `127.0.0.1:8444` on-demand TLS) 済み。Nginx stream SNI分岐は未実施 | 🔶 一部完了 |
+| 6c | analytics.ymkw.top公開: DNS-only (A→VPS IP) + nginx vhost (cloudflare-onlyなし) + certbot。外部HTTPS実測 `/`→308・`/api/health`→200・月次ページ200 | ✅ 完了 (2026-11-10) |
 | 7a | ドメイン登録フローのコード: マイグレーション011 (source/invite_code/is_active)、`/internal/caddy-ask`、`/setup subdomain` (招待コード検証) ・ `/setup domain` (DNS確認) 、失効チェッカー (6時間ごと) | ✅ 完了 (本番反映済み) |
 | 7b | Caddy側配線: askエンドポイント接続、`*.yexe.top` ワイルドカードDNS、Botコマンドの実運用 | 未 |
 
