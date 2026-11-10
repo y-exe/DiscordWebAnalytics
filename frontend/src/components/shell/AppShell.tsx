@@ -75,36 +75,22 @@ function useSidebarChannels(): SidebarChannel[] {
   return channels;
 }
 
-/** 現在のURLから期間とパスモードを解決する */
-export function resolveCurrentPeriod(
-  pathname: string,
-  mParam: string | null,
-): { period: Period; mode: "path" | "query" } {
-  const monthMatch = /^\/month\/(\d{4})\/(\d{1,2})$/.exec(pathname);
-  if (monthMatch) {
-    const year = Number(monthMatch[1]);
-    const month = Number(monthMatch[2]);
-    return { period: { key: `${year}-${month}`, year, month, isAll: false }, mode: "path" };
-  }
-  if (pathname === "/all") {
-    return { period: { key: "all", year: null, month: null, isAll: true }, mode: "path" };
-  }
-  return { period: parsePeriod(mParam), mode: "query" };
+/** 現在のURL (mクエリ) から期間を解決する。クエリがない場合は最新公開月 */
+export function resolveCurrentPeriod(mParam: string | null): Period {
+  return parsePeriod(mParam);
 }
 
 function navHref(itemKey: string, period: Period): string {
   if (itemKey === "summary") {
-    if (period.isAll) return "/all";
-    if (period.year && period.month) return `/month/${period.year}/${period.month}`;
-    return "/month/latest";
+    // サマリーはルート (+mクエリ) 形式に統一
+    return periodHref("/", period);
   }
   const path = itemKey === "channels" ? "/channels" : `/${itemKey}`;
   return periodHref(path, period);
 }
 
 function isNavActive(itemKey: string, pathname: string): boolean {
-  if (itemKey === "summary")
-    return pathname === "/" || pathname.startsWith("/month") || pathname === "/all";
+  if (itemKey === "summary") return pathname === "/";
   return pathname.startsWith(`/${itemKey}`);
 }
 
@@ -208,7 +194,7 @@ function SidebarBody({
       <div className="sidebar-scroll min-h-0 flex-1 overflow-y-auto pb-2">
         <div className="flex items-start justify-between px-6 pb-5 pt-6">
           <Link
-            href="/month/latest"
+            href={periodHref("/", period)}
             onClick={onNavigate}
             className="flex items-center gap-3 rounded-xl hover:opacity-80 transition-opacity"
           >
@@ -260,7 +246,7 @@ export default function AppShell({
     setDrawerOpen(false);
   }, [pathname, router]);
 
-  const { period } = resolveCurrentPeriod(pathname, mParam);
+  const period = resolveCurrentPeriod(mParam);
 
   return (
     <div className="min-h-screen bg-canvas">
@@ -315,7 +301,9 @@ export default function AppShell({
 
       <div className="md:pl-72">
         <GuildNameContext value={guild.name}>
-          <main className="mx-auto w-full max-w-7xl px-4 pb-16 pt-6 md:px-8 md:pt-8">{children}</main>
+          <main className="mx-auto w-full max-w-7xl px-4 pb-16 pt-6 md:px-8 md:pt-8">
+            {children}
+          </main>
         </GuildNameContext>
       </div>
     </div>

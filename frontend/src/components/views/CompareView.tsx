@@ -182,7 +182,7 @@ export default function CompareView({
       <PageToolbar
         title="比較"
         subtitle="メンバー同士の発言推移を並べて比較しましょう"
-        right={<PeriodPicker period={period} mode="query" />}
+        right={<PeriodPicker period={period} />}
       />
 
       <div className="app-card mb-4 p-4">

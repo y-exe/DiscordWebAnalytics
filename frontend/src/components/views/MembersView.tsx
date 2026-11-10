@@ -98,7 +98,7 @@ export default function MembersView({
       <PageToolbar
         title="メンバー"
         subtitle="メンバーがどんな発言をしているか確認しましょう"
-        right={<PeriodPicker period={period} mode="query" />}
+        right={<PeriodPicker period={period} />}
       />
 
       <div className="app-card">

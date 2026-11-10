@@ -224,7 +224,7 @@ export default function SummaryView({
       <PageToolbar
         title={`${title}の統計`}
         subtitle={`${guildName || "このサーバー"}の統計です！分析/調査/把握にお役立てください！`}
-        right={<PeriodPicker period={period} mode="path" />}
+        right={<PeriodPicker period={period} />}
       />
 
       <Reorderable

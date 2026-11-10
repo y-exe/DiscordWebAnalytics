@@ -1,5 +1,3 @@
-import type { ReadonlyURLSearchParams } from "next/navigation";
-
 export interface Period {
   /** "YYYY-MM" または "all" (全期間) */
   key: string;
@@ -41,11 +39,10 @@ export function shortPeriodLabel(period: Period): string {
   return `${period.year}.${String(period.month).padStart(2, "0")}`;
 }
 
-/** 期間を表すクエリパラメータ値 (既定期間なら省略) */
+/** 期間を表すクエリパラメータ値。サイドバー/期間選択は既定月でも常に m= を付ける
+ * (URLで期間を明示し、ページ間移動で期間が落ちないようにするため) */
 export function periodQueryValue(period: Period): string | null {
-  if (period.isAll) return "all";
-  const def = defaultPeriod();
-  return period.key === def.key ? null : period.key;
+  return period.key || null;
 }
 
 export function periodHref(
@@ -58,18 +55,6 @@ export function periodHref(
   if (m) params.set("m", m);
   const query = params.toString();
   return query ? `${pathname}?${query}` : pathname;
-}
-
-/** 現在のsearchParamsから期間を解釈し、指定パス+期間のhrefを作る (nav用) */
-export function hrefWithPeriod(
-  pathname: string,
-  searchParams: Pick<ReadonlyURLSearchParams, "get"> | null,
-  targetPath: string,
-): string {
-  const m = searchParams?.get("m");
-  const period = parsePeriod(m, m === undefined ? undefined : undefined);
-  // parsePeriodのfallbackは既定期間。mが無いページ (月別サマリー) では既定期間扱い
-  return periodHref(targetPath, period);
 }
 
 /** 直近nヶ月ぶんの月リスト (新しい順) */

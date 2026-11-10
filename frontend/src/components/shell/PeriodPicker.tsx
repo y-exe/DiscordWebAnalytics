@@ -9,7 +9,13 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { periodHref, latestPublishedMonth, recentMonths, type Period } from "@/lib/period";
+import {
+  defaultPeriod,
+  latestPublishedMonth,
+  periodHref,
+  recentMonths,
+  type Period,
+} from "@/lib/period";
 import { fetchAPI } from "@/lib/api";
 
 interface MonthCandidate {
@@ -74,11 +80,9 @@ function buildMonthCandidates(counts: Map<string, number>, selected: Period): Mo
 }
 
 /**
- * 期間セレクタ。
- * - mode "path": 月別サマリー (/month/Y/M) と /all を切り替える
- * - mode "query": 現在のパスの m クエリを更新する
+ * 期間セレクタ。現在のパスの m クエリを更新する (既定月でも常に m= を付ける)。
  */
-export default function PeriodPicker({ period, mode }: { period: Period; mode: "path" | "query" }) {
+export default function PeriodPicker({ period }: { period: Period }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -117,24 +121,14 @@ export default function PeriodPicker({ period, mode }: { period: Period; mode: "
   const go = (href: string) => router.push(href);
 
   const monthHref = (year: number, month: number): string => {
-    if (mode === "path") return `/month/${year}/${month}`;
     const next = new URLSearchParams(searchParams.toString());
-    const queryValue = `${year}-${month}`;
-    const def = recentMonths(1)[0];
-    if (queryValue === `${def.year}-${def.month}`) next.delete("m");
-    else next.set("m", queryValue);
+    next.set("m", `${year}-${month}`);
     const query = next.toString();
     return query ? `${pathname}?${query}` : pathname;
   };
 
-  const allHref =
-    mode === "path"
-      ? "/all"
-      : periodHref(pathname, { key: "all", year: null, month: null, isAll: true });
-  const monthModeHref =
-    mode === "path"
-      ? "/month/latest"
-      : periodHref(pathname, { key: "", year: null, month: null, isAll: false });
+  const allHref = periodHref(pathname, { key: "all", year: null, month: null, isAll: true });
+  const monthModeHref = periodHref(pathname, defaultPeriod());
 
   return (
     <div className="flex items-center gap-2">

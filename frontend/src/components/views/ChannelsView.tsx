@@ -77,7 +77,7 @@ export default function ChannelsView({
       <PageToolbar
         title="チャンネル"
         subtitle="メンバーに愛されているチャンネルを確認しましょう"
-        right={<PeriodPicker period={period} mode="query" />}
+        right={<PeriodPicker period={period} />}
       />
 
       <div className="app-card">

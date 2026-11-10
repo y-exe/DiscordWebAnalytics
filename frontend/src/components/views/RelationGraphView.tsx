@@ -752,7 +752,10 @@ export default function RelationGraphView({
       });
 
       sigmaRef.current = sigma;
-      (globalThis as unknown as Record<string, unknown>).__sigma = sigma;
+      if (import.meta.env.DEV) {
+        // デバッグ用: コンソールからsigmaを操作できるようにする (開発環境のみ)
+        (globalThis as unknown as Record<string, unknown>).__sigma = sigma;
+      }
       (globalThis as unknown as Record<string, unknown>).__graph = graph;
       setLayoutRunning(false);
       setLayoutProgress(100);
@@ -876,7 +879,7 @@ export default function RelationGraphView({
           </p>
         </div>
         <div className="shrink-0 self-start rounded-xl border border-border bg-card/95 p-2 shadow-lg backdrop-blur md:self-auto">
-          <PeriodPicker period={period} mode="query" />
+          <PeriodPicker period={period} />
         </div>
         <div className="w-full shrink-0 md:ml-auto md:w-72">
           <input

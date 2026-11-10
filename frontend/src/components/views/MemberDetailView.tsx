@@ -182,7 +182,7 @@ export default function MemberDetailView({
       <PageToolbar
         title={title}
         subtitle="メンバーの行動や好みをより詳しく把握しましょう！"
-        right={<PeriodPicker period={period} mode="query" />}
+        right={<PeriodPicker period={period} />}
       />
 
       {/* プロフィール (左) とKPI (右) を別カードで左右に配置 */}

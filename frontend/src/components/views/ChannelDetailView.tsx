@@ -195,7 +195,7 @@ export default function ChannelDetailView({
       <PageToolbar
         title={`#${channel.name}`}
         subtitle={`${title}のチャンネル統計`}
-        right={<PeriodPicker period={period} mode="query" />}
+        right={<PeriodPicker period={period} />}
       />
 
       <Reorderable
