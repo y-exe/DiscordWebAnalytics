@@ -72,8 +72,11 @@ export function loadSync(client: Client, pool: Pool): void {
       ENRICH_INTERVAL_MS,
     );
 
-    void runLooped(repairStaleAvatars, "アバター修復エラー");
-    setInterval(() => void runLooped(repairStaleAvatars, "アバター修復エラー"), ENRICH_INTERVAL_MS);
+    void runLooped(refreshAvatars, "プロフィール再取得エラー");
+    setInterval(
+      () => void runLooped(refreshAvatars, "プロフィール再取得エラー"),
+      ENRICH_INTERVAL_MS,
+    );
   });
 
   async function runLooped(
@@ -279,25 +282,53 @@ async function enrichUserProfiles(client: Client, pool: Pool): Promise<void> {
   }
 }
 
-/** 旧同期で users.avatar_url に保存されたギルド固有アイコン (退出すると404になる) を
- * ユーザーIDから取得したグローバルアバターで修復する */
-async function repairStaleAvatars(client: Client, pool: Pool): Promise<void> {
+/** ユーザーのアバター/バナーをRESTから再取得し、陳腐化を修復する。
+ * 退会者がアバターを変更すると保存済みURLが404になるため、guild_members行が
+ * 残っている (=ダッシュボードに表示されうる) 全ユーザーを1回2000人ずつ
+ * 抽出して順次更新する (数時間で全ユーザーを一周)。 */
+async function refreshAvatars(client: Client, pool: Pool): Promise<void> {
   const { rows } = await pool.query(
-    `SELECT user_id FROM users WHERE avatar_url LIKE '%/guilds/%' LIMIT 100`,
+    `
+    SELECT DISTINCT gm.user_id
+    FROM guild_members gm
+    ORDER BY random()
+    LIMIT 2000
+    `,
   );
   if (rows.length === 0) return;
 
-  console.log(`ギルド固有アバターの修復開始: 対象${rows.length}人`);
-  let repaired = 0;
+  console.log(`プロフィール再取得開始: 対象${rows.length}人`);
+  let refreshed = 0;
   for (const row of rows) {
     const userId = String(row.user_id);
     try {
       const user = await client.users.fetch(userId);
-      await pool.query(`UPDATE users SET avatar_url = $2 WHERE user_id = $1`, [
-        user.id,
-        user.displayAvatarURL(),
-      ]);
-      repaired += 1;
+      await pool.query(
+        `
+        UPDATE users
+        SET avatar_url = $2,
+            banner_url = COALESCE($3, banner_url),
+            accent_color = COALESCE($4, accent_color),
+            avatar_decoration_url = COALESCE($5, avatar_decoration_url),
+            nameplate_asset = COALESCE($6, nameplate_asset),
+            nameplate_palette = COALESCE($7, nameplate_palette),
+            primary_guild_tag = COALESCE($8, primary_guild_tag),
+            primary_guild_badge_url = COALESCE($9, primary_guild_badge_url)
+        WHERE user_id = $1
+        `,
+        [
+          user.id,
+          user.displayAvatarURL(),
+          user.bannerURL({ size: 1024 }) ?? null,
+          user.hexAccentColor ?? null,
+          avatarDecorationUrl(user.avatarDecorationData?.asset ?? null),
+          nameplateAsset(user.collectibles?.nameplate?.asset ?? null),
+          user.collectibles?.nameplate?.palette ?? null,
+          primaryGuildTag(user.primaryGuild),
+          guildTagBadgeUrl(user.primaryGuild),
+        ],
+      );
+      refreshed += 1;
       await new Promise((resolve) => setTimeout(resolve, 100));
     } catch (error) {
       if (
@@ -306,14 +337,17 @@ async function repairStaleAvatars(client: Client, pool: Pool): Promise<void> {
         (error as { code?: number }).code === 10013
       ) {
         // アカウント消滅済み: フロントがIDからデフォルトアバターを導出できるようNULLにする
-        await pool.query(`UPDATE users SET avatar_url = NULL WHERE user_id = $1`, [row.user_id]);
+        await pool.query(
+          `UPDATE users SET avatar_url = NULL, banner_url = NULL WHERE user_id = $1`,
+          [row.user_id],
+        );
         continue;
       }
-      console.error(`アバター修復エラー ${userId}: ${error}`);
+      console.error(`プロフィール再取得エラー ${userId}: ${error}`);
     }
   }
-  if (repaired > 0) {
-    console.log(`ギルド固有アバターの修復完了: ${repaired}人`);
+  if (refreshed > 0) {
+    console.log(`プロフィール再取得完了: ${refreshed}人`);
   }
 }
 
