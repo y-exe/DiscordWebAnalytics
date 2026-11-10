@@ -11,12 +11,8 @@ export type CidrRange = [ipaddr.IPv4 | ipaddr.IPv6, number];
 
 const BASE_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-const ALLOWED_ORIGINS = [
-  "https://ymkw.top",
-  "https://www.ymkw.top",
-  "http://localhost:4321",
-  "http://127.0.0.1:4321",
-];
+const PROD_ALLOWED_ORIGINS = ["https://ymkw.top", "https://www.ymkw.top"];
+const DEV_ALLOWED_ORIGINS = ["http://localhost:4321", "http://127.0.0.1:4321"];
 
 // これらのHostはギルドDomainsが未登録でも既定ギルドへフォールバックする (過渡期互換)
 const DEFAULT_GUILD_HOSTS = ["api.ymkw.top", "localhost", "127.0.0.1", "::1", "ymkw-backend"];
@@ -244,7 +240,11 @@ export async function loadConfig(options: ConfigLoadOptions = {}): Promise<AppCo
     adminSessionSecret,
     adminPasswordHash,
     enableApiDocs: (process.env.ENABLE_API_DOCS ?? "false").toLowerCase() === "true",
-    allowedOrigins: ALLOWED_ORIGINS,
+    allowedOrigins:
+      (process.env.NODE_ENV ?? (options.inContainer ? "production" : "development")) ===
+      "production"
+        ? PROD_ALLOWED_ORIGINS
+        : [...PROD_ALLOWED_ORIGINS, ...DEV_ALLOWED_ORIGINS],
     rateLimitWindow: intEnv(process.env.RATE_LIMIT_WINDOW, 10),
     maxRequests: intEnv(process.env.RATE_LIMIT_MAX_REQUESTS, 180),
     botMaxRequests: intEnv(process.env.RATE_LIMIT_BOT_MAX_REQUESTS, 900),

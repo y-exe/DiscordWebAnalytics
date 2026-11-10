@@ -1,6 +1,7 @@
 import {
   deriveMountedRequestEnv,
   getBackendRuntime,
+  getTrustedEdgeIps,
   stripApiPrefix,
 } from "../../../../../backend/src/runtime";
 
@@ -13,12 +14,9 @@ export const runtime = "nodejs";
  * エッジ (Caddy) は全トラフィックをこのコンテナへ投げるのみでよい。
  */
 
-// ピアが信頼できるエッジプロキシのIP群 (既定: VPS Nginx/Caddy のWGアドレス)
-const trustedEdgeIps = (process.env.TRUSTED_EDGE_PROXY_IPS || "10.77.0.1").split(",");
-
 async function handler(request: Request): Promise<Response> {
   const { app } = await getBackendRuntime();
-  return app.fetch(stripApiPrefix(request), deriveMountedRequestEnv(request, trustedEdgeIps));
+  return app.fetch(stripApiPrefix(request), deriveMountedRequestEnv(request, getTrustedEdgeIps()));
 }
 
 export const GET = handler;

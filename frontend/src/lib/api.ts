@@ -54,6 +54,7 @@ export async function fetchAPI(path: string, options: FetchAPIOptions = {}): Pro
     try {
       const res = await fetch(url, {
         ...fetchOptions,
+        cache: fetchOptions.cache ?? "no-store",
         headers,
         credentials: fetchOptions.credentials ?? "include",
       });
@@ -104,10 +105,10 @@ function redirectToErrorPage(error: Error, isServer: boolean): void {
     return;
   if (window.location.pathname === "/error") return;
 
+  // 内部APIのURLをクエリに露出させない (code/msgのみ渡す)
   const params = new URLSearchParams({
     code: String(error.status),
     msg: error.message || "Bad Gateway",
-    url: error.url,
   });
   window.location.assign(`/error?${params.toString()}`);
 }

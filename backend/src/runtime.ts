@@ -45,6 +45,16 @@ export interface MountedRequestEnv {
 export const TRUSTED_EDGE_PROXY_IPS = ["10.77.0.1"];
 
 /**
+ * 信頼エッジプロキシのIP一覧。環境変数 TRUSTED_EDGE_PROXY_IPS (カンマ区切り) で
+ * 上書きできる。定義はこの1箇所のみ (マウント側route.tsからもここを読む)。
+ */
+export function getTrustedEdgeIps(): string[] {
+  const raw = (process.env.TRUSTED_EDGE_PROXY_IPS || "").trim();
+  if (!raw) return TRUSTED_EDGE_PROXY_IPS;
+  return raw.split(",").map((entry) => entry.trim()).filter(Boolean);
+}
+
+/**
  * マウントされたHonoに渡すピア情報をXFFチェーンから決める。
  * - 末尾から信頼エッジのホップ (VPS Nginx/CaddyのWGアドレス) を剥がし、
  *   直近の非信頼エントリを実クライアント候補として返す。これにより中継より前の

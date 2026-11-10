@@ -2,7 +2,8 @@ import React from "react";
 import { ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const InteractiveHoverButton = React.forwardRef(({ text = "Button", className, ...props }, ref) => {
+const InteractiveHoverButton = React.forwardRef<HTMLButtonElement, React.ComponentProps<"button"> & { text?: string }>(
+  ({ text = "Button", className, ...props }, ref) => {
   return (
     <button
       ref={ref}
@@ -23,7 +24,8 @@ const InteractiveHoverButton = React.forwardRef(({ text = "Button", className, .
       <div className="absolute left-[20%] top-[40%] h-2 w-2 scale-[1] rounded-lg bg-black transition-all duration-300 group-hover:left-[0%] group-hover:top-[0%] group-hover:h-full group-hover:w-full group-hover:scale-[1.8] group-hover:bg-black"></div>
     </button>
   );
-});
+  },
+);
 
 InteractiveHoverButton.displayName = "InteractiveHoverButton";
 
