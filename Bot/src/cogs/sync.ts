@@ -143,7 +143,9 @@ async function syncGuildChannelsAndMembers(pool: Pool, guild: Guild): Promise<vo
       member.id,
       member.displayName,
       user.username,
-      member.displayAvatarURL(),
+      // メインのアバターを保存する。member.displayAvatarURL()を使うとギルド固有の
+      // アイコン (cdn.discordapp.com/guilds/...) が入り、退出すると404になるためNG
+      user.displayAvatarURL(),
       avatarDecorationUrl(user.avatarDecorationData?.asset ?? null),
       nameplateAsset(user.collectibles?.nameplate?.asset ?? null),
       user.collectibles?.nameplate?.palette ?? null,
@@ -213,12 +215,14 @@ function guildTagBadgeUrl(
  * member同期ペイロードにはバナーが含まれないため、未取得のユーザーを対象に日次で取得する。
  */
 async function enrichUserProfiles(client: Client, pool: Pool): Promise<void> {
+  // LIMITに達しても順序が偏らないようrandom()で誰でもいずれ補完されるようにする
   const { rows } = await pool.query(
     `
     SELECT u.user_id
     FROM users u
     JOIN guild_members gm ON gm.user_id = u.user_id
     WHERE u.banner_url IS NULL OR u.banner_url = ''
+    ORDER BY random()
     LIMIT 2000
     `,
   );

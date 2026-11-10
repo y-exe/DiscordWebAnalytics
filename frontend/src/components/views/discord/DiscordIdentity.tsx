@@ -10,7 +10,7 @@ export function UserAvatar({
   size = 32,
   className = "",
 }: {
-  user: Pick<DiscordIdentity, "avatar" | "avatar_decoration">;
+  user: Pick<DiscordIdentity, "avatar" | "avatar_fallback" | "avatar_decoration" | "user_id">;
   size?: number;
   className?: string;
 }) {
@@ -20,7 +20,12 @@ export function UserAvatar({
       className={`relative inline-block shrink-0 ${className}`}
       style={{ width: size, height: size }}
     >
-      <Avatar src={user.avatar} alt="" className="h-full w-full" />
+      <Avatar
+        src={user.avatar}
+        fallbackSrc={user.avatar_fallback}
+        alt=""
+        className="h-full w-full"
+      />
       {user.avatar_decoration && (
         <img
           src={user.avatar_decoration}
@@ -63,7 +68,7 @@ export function ServerTagChip({
   if (!tag) return null;
   return (
     <span
-      className={`inline-flex h-5 items-center gap-1 rounded-md bg-muted px-1.5 align-middle ${className}`}
+      className={`inline-flex h-5 shrink-0 items-center gap-1 whitespace-nowrap rounded-md bg-muted px-1.5 align-middle ${className}`}
       title={`サーバータグ: ${tag}`}
     >
       {badge && <img src={badge} alt="" className="h-3 w-3 shrink-0 object-contain" />}

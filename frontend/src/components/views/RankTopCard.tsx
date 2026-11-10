@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   NameplateText,
   ServerTagChip,
@@ -9,26 +9,40 @@ import {
   type DiscordIdentity,
 } from "./discord/DiscordIdentity";
 
-/** Discordのデフォルトアバター (脱退ユーザー等でアイコンURLが読めなくなった場合の代替) */
+/** 最終手段のデフォルトアバター (メインアバターも無い場合の代替) */
 export const DEFAULT_AVATAR_URL = "https://cdn.discordapp.com/embed/avatars/1.png";
 
 export function Avatar({
   src,
+  fallbackSrc,
   alt = "",
   className = "",
 }: {
   src?: string | null;
+  /** srcが読めない場合 (退出してギルド用アイコンが消滅等) の代替URL。
+   * 通常はユーザーIDから引けるメインのプロフィールアバターを指定する */
+  fallbackSrc?: string | null;
   alt?: string;
   className?: string;
 }) {
-  const [failed, setFailed] = useState(false);
-  const resolvedSrc = !src || failed ? DEFAULT_AVATAR_URL : src;
+  const [stage, setStage] = useState<"src" | "fallback" | "default">("src");
+
+  // src / fallbackSrcが変わったらフォールバック状態をリセットする
+  useEffect(() => {
+    setStage("src");
+  }, [src, fallbackSrc]);
+
+  const resolvedSrc =
+    stage === "fallback"
+      ? (fallbackSrc ?? DEFAULT_AVATAR_URL)
+      : (src ?? fallbackSrc ?? DEFAULT_AVATAR_URL);
   return (
     <img
       src={resolvedSrc}
       alt={alt}
       onError={() => {
-        if (resolvedSrc !== DEFAULT_AVATAR_URL) setFailed(true);
+        if (resolvedSrc === DEFAULT_AVATAR_URL) return;
+        setStage(Boolean(fallbackSrc) ? "fallback" : "default");
       }}
       className={`shrink-0 rounded-full object-cover ${className}`}
     />
@@ -66,7 +80,7 @@ export default function RankTopCard({
   emptyText?: string;
 }) {
   return (
-    <div className="app-card-padded flex h-full flex-col">
+    <div className="app-card-padded flex h-full min-w-0 flex-col">
       <div>
         <p className="text-sm font-black text-foreground">{title}</p>
         {note && <p className="mt-0.5 text-xs font-bold text-muted-foreground">{note}</p>}
@@ -92,20 +106,20 @@ export default function RankTopCard({
             const body = (
               <>
                 {badge}
-                <span className="flex min-w-0 flex-1">
+                <span className="flex min-w-0 flex-1 overflow-hidden">
                   <span
                     style={nameplateBackgroundStyle(item.nameplate)}
-                    className="inline-flex max-w-full items-center gap-1.5 rounded-lg px-1.5 py-0.5"
+                    className="inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-lg px-1.5 py-0.5"
                   >
                     {/* 日付などユーザー以外のエントリー (avatar/decoration未指定) はアイコンなしで表示 */}
                     {(item.avatar !== undefined || item.avatar_decoration !== undefined) && (
                       <UserAvatar user={item} size={32} />
                     )}
-                    <NameplateText name={item.display_name} className="max-w-full text-sm" />
+                    <NameplateText name={item.display_name} className="flex-1 text-sm" />
                     <ServerTagChip tag={item.primary_guild_tag} badge={item.primary_guild_badge} />
                   </span>
                 </span>
-                <span className="text-sm font-black text-foreground">
+                <span className="shrink-0 text-sm font-black text-foreground">
                   {item.count.toLocaleString("ja-JP")}
                   <span className="ml-0.5 text-xs font-bold text-muted-foreground">{unit}</span>
                 </span>

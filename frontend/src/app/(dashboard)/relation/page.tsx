@@ -12,7 +12,7 @@ export async function generateMetadata({ searchParams }: PageProps): Promise<Met
   const [guild, baseUrl] = await Promise.all([getGuildContext(), getGuildBaseUrl()]);
   const period = parsePeriod(m);
   const subject = guild.name || "Discordサーバー";
-  const title = `関係性 (${periodLabel(period)})`;
+  const title = `共通のかかわり (${periodLabel(period)})`;
   const description = `${subject}のメンバー間の結び付きをグラフで可視化 (${periodLabel(period)})。`;
   return {
     title,

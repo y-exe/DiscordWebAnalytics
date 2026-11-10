@@ -6,7 +6,6 @@ import { Search } from "lucide-react";
 import PageToolbar from "@/components/shell/PageToolbar";
 import PeriodPicker from "@/components/shell/PeriodPicker";
 import DeltaBadge, { deltaRate } from "./DeltaBadge";
-import TrendTag, { trendLevel } from "./TrendTag";
 import { fetchAPI } from "@/lib/api";
 import { periodLabel } from "@/lib/period";
 
@@ -144,7 +143,6 @@ export default function ChannelsView({
                     <th className="px-4 py-3">発言数</th>
                     <th className="px-4 py-3">参加メンバー</th>
                     <th className="px-4 py-3">文字数</th>
-                    <th className="px-4 py-3">注目</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -188,16 +186,13 @@ export default function ChannelsView({
                             )}
                           </span>
                         </td>
-                        <td className="px-4 py-2.5">
-                          <TrendTag level={trendLevel(delta, row.messages)} />
-                        </td>
                       </tr>
                     );
                   })}
                   {filtered.length === 0 && (
                     <tr>
                       <td
-                        colSpan={5}
+                        colSpan={4}
                         className="px-4 py-10 text-center text-sm text-muted-foreground"
                       >
                         該当するチャンネルがありません

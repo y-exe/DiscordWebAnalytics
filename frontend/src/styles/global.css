@@ -121,12 +121,36 @@
   @apply rounded-2xl border border-transparent bg-sidebar p-5;
 }
 
-.sidebar-scrollbar::-webkit-scrollbar {
+/* サイドバーはテーマに関係なくダークの見た目に固定 */
+.sidebar-dark {
+  --app-sidebar: #1b1b1c;
+  --app-sidebar-hover: #232324;
+  --app-sidebar-active: #2c2c2e;
+  --app-sidebar-border: rgba(255, 255, 255, 0.08);
+  --app-sidebar-text: #979da6;
+  --app-sidebar-text-strong: #f9fafb;
+}
+
+/* サイドバーのスクロールバー: ホバー時のみ表示されるダーク用の目立たないもの */
+.sidebar-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+.sidebar-scroll:hover {
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+.sidebar-scroll::-webkit-scrollbar {
   width: 6px;
 }
-.sidebar-scrollbar::-webkit-scrollbar-thumb {
-  background: #d4d4d4;
+.sidebar-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.sidebar-scroll::-webkit-scrollbar-thumb {
+  background: transparent;
   border-radius: 99px;
+}
+.sidebar-scroll:hover::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.18);
 }
 
 @layer utilities {

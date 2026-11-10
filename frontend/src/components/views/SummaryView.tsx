@@ -20,6 +20,7 @@ import HeatmapGrid from "./HeatmapGrid";
 import Reorderable from "./Reorderable";
 import { deltaRate } from "./DeltaBadge";
 import { fetchAPI } from "@/lib/api";
+import { useGuildName } from "@/components/shell/AppShell";
 import { periodLabel, previousMonthOf, type Period } from "@/lib/period";
 
 interface RankingUser {
@@ -137,6 +138,7 @@ export default function SummaryView({
     };
   }, [year, month, isAll]);
 
+  const guildName = useGuildName();
   const title = isAll
     ? "全期間"
     : periodLabel({ key: `${year}-${month}`, year, month, isAll: false });
@@ -221,7 +223,7 @@ export default function SummaryView({
     <div className="space-y-5">
       <PageToolbar
         title={`${title}の統計`}
-        subtitle="コミュニティの現状を把握しましょう"
+        subtitle={`${guildName || "このサーバー"}の統計です！分析/調査/把握にお役立てください！`}
         right={<PeriodPicker period={period} mode="path" />}
       />
 
@@ -270,6 +272,138 @@ export default function SummaryView({
                   series={data.chart
                     .slice(-14)
                     .map((p) => ({ label: shortDate(p.date), value: p.total }))}
+                />
+              </div>
+            ),
+          },
+          {
+            id: "extra-kpis",
+            node: (
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <StatCard
+                  title="平均文字数/発言"
+                  value={avgChars ?? "—"}
+                  unit={avgChars === null ? undefined : "字"}
+                />
+                <StatCard
+                  title="ピーク時間帯"
+                  value={peakHour ? `${peakHour.hour}:00台` : "—"}
+                  unit={peakHour ? `${peakHour.count.toLocaleString("ja-JP")}件` : undefined}
+                />
+                <StatCard
+                  title="最も活発なチャンネル"
+                  value={busiestChannel ? `#${busiestChannel.name}` : "—"}
+                  unit={
+                    busiestChannel ? `${busiestChannel.value.toLocaleString("ja-JP")}件` : undefined
+                  }
+                />
+                <StatCard
+                  title="発言のあった日数"
+                  value={activeDays > 0 ? activeDays : "—"}
+                  unit={activeDays > 0 ? "日" : undefined}
+                />
+              </div>
+            ),
+          },
+          {
+            id: "activity",
+            node: (
+              <div className="grid gap-4 xl:grid-cols-3">
+                <div className="app-card-padded min-w-0 xl:col-span-2">
+                  <p className="text-sm font-black text-foreground">時間帯別アクティビティ</p>
+                  <p className="mt-0.5 text-xs font-bold text-muted-foreground">
+                    曜日 × 時間帯の発言集中度
+                  </p>
+                  <div className="mt-4">
+                    <HeatmapGrid data={data.heatmap} />
+                  </div>
+                </div>
+                <div className="app-card-padded min-w-0">
+                  <p className="text-sm font-black text-foreground">チャンネル別発言シェア</p>
+                  <p className="mt-0.5 mb-4 text-xs font-bold text-muted-foreground">
+                    発言数の多いチャンネル トップ6
+                  </p>
+                  {topChannels.length === 0 ? (
+                    <p className="py-8 text-center text-sm text-muted-foreground">
+                      データがありません
+                    </p>
+                  ) : (
+                    <ul className="space-y-3">
+                      {topChannels.map((channel) => (
+                        <li key={channel.name}>
+                          <div className="mb-1 flex items-center justify-between gap-2 text-xs font-bold">
+                            <span className="truncate text-foreground">#{channel.name}</span>
+                            <span className="shrink-0 text-muted-foreground">
+                              {channel.value.toLocaleString("ja-JP")}
+                            </span>
+                          </div>
+                          <div className="h-1.5 w-full overflow-hidden rounded-full bg-background">
+                            <div
+                              className="h-full rounded-full bg-accent-data"
+                              style={{
+                                width: `${Math.max(4, Math.round((channel.value / channelMax) * 100))}%`,
+                              }}
+                            />
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
+            ),
+          },
+          {
+            id: "ranks",
+            node: (
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                <RankTopCard
+                  title="発言王"
+                  note="この期間に最も発言したメンバー"
+                  unit="件"
+                  items={data.ranking.map((u) => ({
+                    user_id: u.user_id,
+                    display_name: u.display_name,
+                    avatar: u.avatar,
+                    avatar_decoration: u.avatar_decoration,
+                    nameplate: u.nameplate,
+                    primary_guild_tag: u.primary_guild_tag,
+                    primary_guild_badge: u.primary_guild_badge,
+                    count: u.count,
+                  }))}
+                  hrefBase="/members/"
+                />
+                <RankTopCard
+                  title="文字数王"
+                  note="最も多く文字を書いたメンバー"
+                  unit="字"
+                  items={[...data.ranking]
+                    .sort((a, b) => b.char_count - a.char_count)
+                    .map((u) => ({
+                      user_id: u.user_id,
+                      display_name: u.display_name,
+                      avatar: u.avatar,
+                      avatar_decoration: u.avatar_decoration,
+                      nameplate: u.nameplate,
+                      primary_guild_tag: u.primary_guild_tag,
+                      primary_guild_badge: u.primary_guild_badge,
+                      count: u.char_count,
+                    }))}
+                  hrefBase="/members/"
+                />
+                <RankTopCard
+                  title="最多発言日"
+                  note="期間内で最も盛り上がった日 トップ5"
+                  unit="件"
+                  emptyText="データがありません"
+                  items={(
+                    data.analysis?.top_dates ??
+                    (data.analysis?.max_date ? [data.analysis.max_date] : [])
+                  ).map((entry) => ({
+                    user_id: `date-${entry.date}`,
+                    display_name: entry.date.replaceAll("-", "/"),
+                    count: entry.count,
+                  }))}
                 />
               </div>
             ),
@@ -401,144 +535,6 @@ export default function SummaryView({
                     </ResponsiveContainer>
                   </div>
                 </div>
-              </div>
-            ),
-          },
-          {
-            id: "extra-kpis",
-            node: (
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                <StatCard
-                  title="平均文字数/発言"
-                  value={avgChars ?? "—"}
-                  unit={avgChars === null ? undefined : "字"}
-                />
-                <StatCard
-                  title="ピーク時間帯"
-                  value={peakHour ? `${peakHour.hour}:00台` : "—"}
-                  unit={
-                    peakHour
-                      ? `${peakHour.count.toLocaleString("ja-JP")}件`
-                      : undefined
-                  }
-                />
-                <StatCard
-                  title="最も活発なチャンネル"
-                  value={busiestChannel ? `#${busiestChannel.name}` : "—"}
-                  unit={
-                    busiestChannel
-                      ? `${busiestChannel.value.toLocaleString("ja-JP")}件`
-                      : undefined
-                  }
-                />
-                <StatCard
-                  title="発言のあった日数"
-                  value={activeDays > 0 ? activeDays : "—"}
-                  unit={activeDays > 0 ? "日" : undefined}
-                />
-              </div>
-            ),
-          },
-          {
-            id: "activity",
-            node: (
-              <div className="grid gap-4 xl:grid-cols-3">
-                <div className="app-card-padded xl:col-span-2">
-                  <p className="text-sm font-black text-foreground">時間帯別アクティビティ</p>
-                  <p className="mt-0.5 text-xs font-bold text-muted-foreground">
-                    曜日 × 時間帯の発言集中度
-                  </p>
-                  <div className="mt-4">
-                    <HeatmapGrid data={data.heatmap} />
-                  </div>
-                </div>
-                <div className="app-card-padded">
-                  <p className="text-sm font-black text-foreground">チャンネル別発言シェア</p>
-                  <p className="mt-0.5 mb-4 text-xs font-bold text-muted-foreground">
-                    発言数の多いチャンネル トップ6
-                  </p>
-                  {topChannels.length === 0 ? (
-                    <p className="py-8 text-center text-sm text-muted-foreground">
-                      データがありません
-                    </p>
-                  ) : (
-                    <ul className="space-y-3">
-                      {topChannels.map((channel) => (
-                        <li key={channel.name}>
-                          <div className="mb-1 flex items-center justify-between gap-2 text-xs font-bold">
-                            <span className="truncate text-foreground">#{channel.name}</span>
-                            <span className="shrink-0 text-muted-foreground">
-                              {channel.value.toLocaleString("ja-JP")}
-                            </span>
-                          </div>
-                          <div className="h-1.5 w-full overflow-hidden rounded-full bg-background">
-                            <div
-                              className="h-full rounded-full bg-accent-data"
-                              style={{
-                                width: `${Math.max(4, Math.round((channel.value / channelMax) * 100))}%`,
-                              }}
-                            />
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              </div>
-            ),
-          },
-          {
-            id: "ranks",
-            node: (
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                <RankTopCard
-                  title="発言王"
-                  note="この期間に最も発言したメンバー"
-                  unit="件"
-                  items={data.ranking.map((u) => ({
-                    user_id: u.user_id,
-                    display_name: u.display_name,
-                    avatar: u.avatar,
-                    avatar_decoration: u.avatar_decoration,
-                    nameplate: u.nameplate,
-                    primary_guild_tag: u.primary_guild_tag,
-                    primary_guild_badge: u.primary_guild_badge,
-                    count: u.count,
-                  }))}
-                  hrefBase="/members/"
-                />
-                <RankTopCard
-                  title="文字数王"
-                  note="最も多く文字を書いたメンバー"
-                  unit="字"
-                  items={[...data.ranking]
-                    .sort((a, b) => b.char_count - a.char_count)
-                    .map((u) => ({
-                      user_id: u.user_id,
-                      display_name: u.display_name,
-                      avatar: u.avatar,
-                      avatar_decoration: u.avatar_decoration,
-                      nameplate: u.nameplate,
-                      primary_guild_tag: u.primary_guild_tag,
-                      primary_guild_badge: u.primary_guild_badge,
-                      count: u.char_count,
-                    }))}
-                  hrefBase="/members/"
-                />
-                <RankTopCard
-                  title="最多発言日"
-                  note="期間内で最も盛り上がった日 トップ5"
-                  unit="件"
-                  emptyText="データがありません"
-                  items={(
-                    data.analysis?.top_dates ??
-                    (data.analysis?.max_date ? [data.analysis.max_date] : [])
-                  ).map((entry) => ({
-                    user_id: `date-${entry.date}`,
-                    display_name: entry.date.replaceAll("-", "/"),
-                    count: entry.count,
-                  }))}
-                />
               </div>
             ),
           },

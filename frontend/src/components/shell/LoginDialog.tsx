@@ -5,18 +5,33 @@ import { Search, X } from "lucide-react";
 import { ServerTagChip, UserAvatar } from "@/components/views/discord/DiscordIdentity";
 import { fetchAPI } from "@/lib/api";
 
+export interface LoginDialogGuild {
+  name: string;
+  iconUrl: string | null;
+}
+
 interface SearchUser {
   user_id: string;
   display_name: string;
   username: string;
   avatar: string | null;
+  /** ギルド用アイコンが読めない (退出等) 場合の代替: メインのアバター */
+  avatar_fallback?: string | null;
   avatar_decoration?: string | null;
   nameplate?: { asset: string; palette: string } | null;
   primary_guild_tag?: string | null;
   primary_guild_badge?: string | null;
 }
 
-export default function LoginDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+export default function LoginDialog({
+  open,
+  onClose,
+  guild,
+}: {
+  open: boolean;
+  onClose: () => void;
+  guild: LoginDialogGuild;
+}) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchUser[]>([]);
   const [loading, setLoading] = useState(false);
@@ -68,36 +83,46 @@ export default function LoginDialog({ open, onClose }: { open: boolean; onClose:
     setCookie("user_id", user.user_id);
     setCookie("user_name", user.display_name);
     setCookie("user_avatar", user.avatar || "");
-    onClose();
-    window.dispatchEvent(new Event("ymkw:auth-changed"));
-  };
-
-  const handleSkip = () => {
-    setCookie("user_id", "guest");
+    setCookie("user_avatar_fallback", user.avatar_fallback || "");
     onClose();
     window.dispatchEvent(new Event("ymkw:auth-changed"));
   };
 
   return (
-    <div className="fixed inset-0 z-100 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
+    <div
+      className="fixed inset-0 z-100 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs"
+      onClick={(e) => {
+        // ポップアップ外の背景クリックで閉じる
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
       <div
-        className="app-card w-full max-w-md overflow-hidden shadow-2xl"
+        className="w-full max-w-md overflow-hidden rounded-2xl border border-border bg-canvas shadow-2xl"
         role="dialog"
         aria-modal="true"
         aria-label="ユーザー選択"
       >
-        <div className="flex items-center justify-between border-b border-border p-5">
-          <div>
-            <p className="text-base font-black text-foreground">メンバーを選択</p>
-            <p className="mt-0.5 text-xs font-bold text-muted-foreground">
-              このサーバーの表示名またはユーザー名で検索します
-            </p>
+        <div className="flex items-start justify-between border-b border-border p-5">
+          <div className="flex items-center gap-3">
+            {guild.iconUrl ? (
+              <img src={guild.iconUrl} alt="" className="h-10 w-10 rounded-xl object-cover" />
+            ) : (
+              <div className="grid h-10 w-10 place-items-center rounded-xl bg-muted text-base font-black text-foreground">
+                {guild.name ? guild.name.slice(0, 1) : "#"}
+              </div>
+            )}
+            <div>
+              <p className="text-base font-black text-foreground">メンバーを選択</p>
+              <p className="mt-0.5 text-xs font-bold text-muted-foreground">
+                このサーバーの表示名またはユーザー名で検索します
+              </p>
+            </div>
           </div>
           <button
             type="button"
             onClick={onClose}
             aria-label="閉じる"
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
           >
             <X className="h-4 w-4" />
           </button>
@@ -115,7 +140,7 @@ export default function LoginDialog({ open, onClose }: { open: boolean; onClose:
               onChange={(e) => handleSearch(e.target.value)}
             />
           </div>
-          <div className="h-56 space-y-1 overflow-y-auto custom-scrollbar">
+          <div className="h-[min(24rem,60dvh)] space-y-1 overflow-y-auto custom-scrollbar">
             {loading && <p className="py-6 text-center text-sm text-muted-foreground">検索中...</p>}
             {!loading &&
               results.map((user) => (
@@ -150,16 +175,6 @@ export default function LoginDialog({ open, onClose }: { open: boolean; onClose:
               </p>
             )}
           </div>
-        </div>
-
-        <div className="border-t border-border bg-muted/50 p-3 text-center">
-          <button
-            type="button"
-            onClick={handleSkip}
-            className="text-sm text-muted-foreground underline transition-colors hover:text-foreground"
-          >
-            選択せずに閲覧する
-          </button>
         </div>
       </div>
     </div>

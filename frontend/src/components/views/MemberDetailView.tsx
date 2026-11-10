@@ -19,7 +19,7 @@ import PeriodPicker from "@/components/shell/PeriodPicker";
 import { BoostBadge, BoostIcon, ServerTagChip, UserAvatar } from "./discord/DiscordIdentity";
 import StatCard from "./StatCard";
 import { fetchAPI } from "@/lib/api";
-import { formatDiscordDate, snowflakeToDate } from "@/lib/discord-assets";
+import { formatDiscordDate, profileBannerStyle, snowflakeToDate } from "@/lib/discord-assets";
 import { periodLabel } from "@/lib/period";
 
 interface InsightsUser {
@@ -190,19 +190,11 @@ export default function MemberDetailView({
         <div className="app-card overflow-hidden">
           <div
             className="h-32 w-full md:h-40"
-            style={
-              user.banner
-                ? {
-                    backgroundImage: `url(${user.banner})`,
-                    backgroundSize: "cover",
-                    backgroundPosition: "center",
-                  }
-                : {
-                    background: user.accent_color
-                      ? `linear-gradient(135deg, ${user.accent_color}, ${user.accent_color}cc)`
-                      : "linear-gradient(135deg, #3964fe33, #3964fe66)",
-                  }
-            }
+            style={profileBannerStyle({
+              banner: user.banner,
+              accentColor: user.accent_color,
+              userId: user.user_id,
+            })}
           />
           <div className="px-5 pb-5 md:px-6">
             <div>

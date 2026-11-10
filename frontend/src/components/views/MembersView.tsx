@@ -22,6 +22,8 @@ interface MemberStat {
   display_name: string;
   username: string;
   avatar: string | null;
+  /** ギルド用アイコンが読めない (退出等) 場合の代替: メインのアバター */
+  avatar_fallback?: string | null;
   banner: string | null;
   avatar_decoration: string | null;
   nameplate: { asset: string; palette: string } | null;

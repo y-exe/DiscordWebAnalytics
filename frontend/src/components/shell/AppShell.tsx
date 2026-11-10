@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import {
   ChartColumn,
   GitCompareArrows,
@@ -25,10 +25,18 @@ export interface GuildBrand {
   isDefault: boolean;
 }
 
+/** サーバー名をクライアントコンポーネントに渡すためのコンテキスト */
+const GuildNameContext = createContext<string>("");
+
+/** 親Shellから提供されたサーバー名を取得する */
+export function useGuildName(): string {
+  return useContext(GuildNameContext);
+}
+
 const NAV_ITEMS = [
   { key: "summary", label: "統計", Icon: ChartColumn },
   { key: "members", label: "メンバー", Icon: Users },
-  { key: "relation", label: "関係性", Icon: Share2 },
+  { key: "relation", label: "共通のかかわり", Icon: Share2 },
   { key: "compare", label: "比較", Icon: GitCompareArrows },
   { key: "channels", label: "チャンネル", Icon: Hash },
 ] as const;
@@ -120,7 +128,7 @@ function NavList({
               href={navHref(key, period)}
               onClick={onNavigate}
               aria-current={active ? "page" : undefined}
-              className={`flex items-center gap-3 rounded-xl px-4 py-2.5 text-sm font-bold transition-colors ${
+              className={`flex items-center gap-3 rounded-xl px-4 py-1.5 text-sm font-bold transition-colors ${
                 active
                   ? "bg-sidebar-active text-sidebar-text-strong"
                   : "text-sidebar-text hover:bg-sidebar-hover hover:text-sidebar-text-strong"
@@ -130,28 +138,32 @@ function NavList({
               {label}
             </Link>
             {key === "channels" && channels.length > 0 && (
-              <div className="mt-1 max-h-72 space-y-0.5 overflow-y-auto pb-1 pl-9 pr-2">
-                {channels.map((channel) => {
-                  const channelActive =
-                    pathname === `/channels/${channel.id}` ||
-                    pathname.startsWith(`/channels/${channel.id}/`);
-                  return (
-                    <Link
-                      key={channel.id}
-                      href={`/channels/${channel.id}?m=${period.key}`}
-                      onClick={onNavigate}
-                      aria-current={channelActive ? "page" : undefined}
-                      title={channel.name}
-                      className={`block truncate rounded-lg px-2 py-1 text-xs font-bold transition-colors ${
-                        channelActive
-                          ? "bg-sidebar-active text-sidebar-text-strong"
-                          : "text-sidebar-text hover:bg-sidebar-hover hover:text-sidebar-text-strong"
-                      }`}
-                    >
-                      {channel.name}
-                    </Link>
-                  );
-                })}
+              <div className="mt-1">
+                <div className="mx-1 border-t-2 border-sidebar-border" />
+                <div className="mt-1 space-y-0.5 pb-1">
+                  {channels.map((channel) => {
+                    const channelActive =
+                      pathname === `/channels/${channel.id}` ||
+                      pathname.startsWith(`/channels/${channel.id}/`);
+                    return (
+                      <Link
+                        key={channel.id}
+                        href={`/channels/${channel.id}?m=${period.key}`}
+                        onClick={onNavigate}
+                        aria-current={channelActive ? "page" : undefined}
+                        title={channel.name}
+                        className={`flex min-w-0 items-center gap-3 rounded-xl px-4 py-1.5 text-sm font-bold transition-colors ${
+                          channelActive
+                            ? "bg-sidebar-active text-sidebar-text-strong"
+                            : "text-sidebar-text hover:bg-sidebar-hover hover:text-sidebar-text-strong"
+                        }`}
+                      >
+                        <Hash className="h-4.5 w-4.5 shrink-0" aria-hidden="true" />
+                        <span className="truncate">{channel.name}</span>
+                      </Link>
+                    );
+                  })}
+                </div>
               </div>
             )}
           </div>
@@ -192,31 +204,38 @@ function SidebarBody({
   const name = guild.name || "ダッシュボード";
   return (
     <div className="flex h-full flex-col">
-      <div className="px-6 pb-5 pt-6">
-        <Link
-          href="/month/latest"
-          onClick={onNavigate}
-          className="flex items-center gap-3 rounded-xl hover:opacity-80 transition-opacity"
-        >
-          {guild.iconUrl ? (
-            <img src={guild.iconUrl} alt="" className="h-10 w-10 rounded-xl object-cover" />
-          ) : (
-            <div className="grid h-10 w-10 place-items-center rounded-xl bg-sidebar-active">
-              <ChartColumn className="h-5 w-5 text-sidebar-text-strong" aria-hidden="true" />
+      {/* プロフィールの上までがスクロール領域。プロフィールは常に画面内に表示する */}
+      <div className="sidebar-scroll min-h-0 flex-1 overflow-y-auto pb-2">
+        <div className="flex items-start justify-between px-6 pb-5 pt-6">
+          <Link
+            href="/month/latest"
+            onClick={onNavigate}
+            className="flex items-center gap-3 rounded-xl hover:opacity-80 transition-opacity"
+          >
+            {guild.iconUrl ? (
+              <img src={guild.iconUrl} alt="" className="h-10 w-10 rounded-xl object-cover" />
+            ) : (
+              <div className="grid h-10 w-10 place-items-center rounded-xl bg-sidebar-active">
+                <ChartColumn className="h-5 w-5 text-sidebar-text-strong" aria-hidden="true" />
+              </div>
+            )}
+            <div className="min-w-0">
+              <p className="truncate text-sm font-bold leading-tight text-sidebar-text-strong">
+                {name}
+              </p>
+              <p className="text-[11px] font-bold text-sidebar-text">Discord Analytics</p>
             </div>
-          )}
-          <div className="min-w-0">
-            <p className="truncate text-sm font-bold leading-tight text-sidebar-text-strong">
-              {name}
-            </p>
-            <p className="text-[11px] font-bold text-sidebar-text">Discord Analytics</p>
+          </Link>
+          {/* モバイルのダークモード切替は上部バーにあるためドロワー内では非表示にする */}
+          <div className="hidden md:block">
+            <ThemeToggle />
           </div>
-        </Link>
+        </div>
+        <NavList pathname={pathname} period={period} onNavigate={onNavigate} />
       </div>
-      <NavList pathname={pathname} period={period} onNavigate={onNavigate} />
-      <div className="mx-3 mt-auto flex items-center justify-between rounded-xl px-1 pb-4 pt-6">
-        <UserArea />
-        <ThemeToggle />
+      {/* 常時表示されるプロフィール (スクロール範囲外) */}
+      <div className="shrink-0 border-t border-sidebar-border px-3 pb-4 pt-3">
+        <UserArea guild={guild} />
       </div>
     </div>
   );
@@ -246,12 +265,12 @@ export default function AppShell({
   return (
     <div className="min-h-screen bg-canvas">
       {/* デスクトップサイドバー */}
-      <aside className="fixed inset-y-0 left-0 z-50 hidden w-64 flex-col border-r border-sidebar-border bg-sidebar md:flex">
+      <aside className="sidebar-dark fixed inset-y-0 left-0 z-50 hidden w-72 flex-col border-r border-sidebar-border bg-sidebar md:flex">
         <SidebarBody guild={guild} pathname={pathname} period={period} />
       </aside>
 
       {/* モバイルトップバー */}
-      <header className="sticky top-0 z-50 flex h-14 items-center justify-between border-b border-sidebar-border bg-sidebar px-4 md:hidden">
+      <header className="sidebar-dark sticky top-0 z-50 flex h-14 items-center justify-between border-b border-sidebar-border bg-sidebar px-4 md:hidden">
         <button
           type="button"
           aria-label="メニューを開く"
@@ -275,7 +294,7 @@ export default function AppShell({
             className="absolute inset-0 bg-black/60 backdrop-blur-xs"
             onClick={() => setDrawerOpen(false)}
           />
-          <div className="absolute inset-y-0 left-0 w-72 border-r border-sidebar-border bg-sidebar shadow-2xl">
+          <div className="sidebar-dark absolute inset-y-0 left-0 flex w-72 flex-col border-r border-sidebar-border bg-sidebar shadow-2xl">
             <button
               type="button"
               aria-label="閉じる"
@@ -294,8 +313,10 @@ export default function AppShell({
         </div>
       )}
 
-      <div className="md:pl-64">
-        <main className="mx-auto w-full max-w-7xl px-4 pb-16 pt-6 md:px-8 md:pt-8">{children}</main>
+      <div className="md:pl-72">
+        <GuildNameContext value={guild.name}>
+          <main className="mx-auto w-full max-w-7xl px-4 pb-16 pt-6 md:px-8 md:pt-8">{children}</main>
+        </GuildNameContext>
       </div>
     </div>
   );

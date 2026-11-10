@@ -413,7 +413,7 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
     return jsonResponse({ detail: "Internal Server Error" }, 500);
   });
 
-  app.get("/", (c) => plainTextResponse("ymkw.top API by yexe"));
+  app.get("/", (c) => plainTextResponse("API is running."));
 
   app.get("/health", (c) => plainTextResponse("ok"));
 
@@ -427,7 +427,7 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
     app.get("/openapi.json", (c) =>
       jsonResponse({
         openapi: "3.1.0",
-        info: { title: "ymkw.top API", version: "1.0.0" },
+        info: { title: "Discord Analytics API", version: "1.0.0" },
         paths: {},
       }),
     );
@@ -472,9 +472,7 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
   });
 
   app.post("/admin/login", async (c) => {
-    if (
-      !adminOriginAllowed(c.req.header("origin"), adminRequestHost(c), cfg.allowedOrigins)
-    ) {
+    if (!adminOriginAllowed(c.req.header("origin"), adminRequestHost(c), cfg.allowedOrigins)) {
       return jsonError(403, "Invalid origin.");
     }
     const clientIp = getPeerIp(c);
@@ -534,9 +532,7 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
   });
 
   app.post("/admin/logout", (c) => {
-    if (
-      !adminOriginAllowed(c.req.header("origin"), adminRequestHost(c), cfg.allowedOrigins)
-    ) {
+    if (!adminOriginAllowed(c.req.header("origin"), adminRequestHost(c), cfg.allowedOrigins)) {
       return jsonError(403, "Invalid origin.");
     }
     return noContent({
@@ -610,7 +606,8 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
     if (guildOrError instanceof Response) return guildOrError;
     const { rows } = await pool.query(
       `SELECT gm.user_id, gm.display_name, u.username, gm.avatar_url,
-              u.avatar_decoration_url, u.nameplate_asset, u.nameplate_palette,
+              u.avatar_url AS main_avatar_url, u.avatar_decoration_url,
+              u.nameplate_asset, u.nameplate_palette,
               u.primary_guild_tag, u.primary_guild_badge_url
        FROM guild_members gm
        JOIN users u ON u.user_id = gm.user_id
@@ -627,6 +624,9 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
         display_name: row.display_name,
         username: row.username,
         avatar: row.avatar_url,
+        // ギルド用アイコンが読めなくなった (退出等) 場合の代替として
+        // ユーザーIDと紐付いたメインのアバターを併せて返す
+        avatar_fallback: row.main_avatar_url ?? null,
         avatar_decoration: row.avatar_decoration_url ?? null,
         nameplate: row.nameplate_asset
           ? { asset: row.nameplate_asset, palette: row.nameplate_palette ?? "white" }
@@ -1775,8 +1775,11 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
       isAll ? Promise.resolve(new Map()) : aggregate(prevStart, prevEnd),
       pool.query(
         `
-        SELECT gm.user_id, gm.display_name, u.username, u.avatar_url,
-               u.banner_url AS user_banner_url, u.avatar_decoration_url, u.nameplate_asset, u.nameplate_palette,
+        SELECT gm.user_id, gm.display_name, u.username,
+               COALESCE(gm.avatar_url, u.avatar_url) AS avatar_url,
+               u.avatar_url AS main_avatar_url,
+               u.banner_url AS user_banner_url, u.avatar_decoration_url,
+               u.nameplate_asset, u.nameplate_palette,
                u.primary_guild_tag, u.primary_guild_badge_url,
                gm.banner_url AS member_banner_url, gm.joined_at, gm.premium_since
         FROM guild_members gm
@@ -1800,6 +1803,7 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
           display_name: (row.display_name as string) || "Unknown",
           username: (row.username as string) || "unknown",
           avatar: (row.avatar_url as string | null) ?? null,
+          avatar_fallback: (row.main_avatar_url as string | null) ?? null,
           banner:
             (row.member_banner_url as string | null) ??
             (row.user_banner_url as string | null) ??
@@ -1881,7 +1885,8 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
         baseParams,
       ),
       pool.query(
-        `SELECT gm.display_name, u.username, u.avatar_url,
+        `SELECT gm.display_name, u.username,
+                COALESCE(gm.avatar_url, u.avatar_url) AS avatar_url, u.avatar_url AS main_avatar_url,
                 COALESCE(gm.banner_url, u.banner_url) AS banner_url, u.accent_color,
                 u.avatar_decoration_url, u.nameplate_asset, u.nameplate_palette,
                 u.primary_guild_tag, u.primary_guild_badge_url, gm.joined_at, gm.premium_since
@@ -1967,6 +1972,7 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
             display_name: (profile.display_name as string) || "Unknown",
             username: (profile.username as string) || "unknown",
             avatar: (profile.avatar_url as string | null) ?? null,
+            avatar_fallback: (profile.main_avatar_url as string | null) ?? null,
             banner: (profile.banner_url as string | null) ?? null,
             accent_color: (profile.accent_color as string | null) ?? null,
             avatar_decoration: (profile.avatar_decoration_url as string | null) ?? null,
@@ -2062,6 +2068,8 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
         avatar: string | null;
         avatar_decoration: string | null;
         count: number;
+        /** 文字数王カード用 (メンバーごとの合計文字数) */
+        chars: number;
       }>,
       dow: [] as Array<{ dow: number; count: number }>,
       hours: [] as Array<{ hour: number; count: number }>,
@@ -2141,7 +2149,8 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
       ),
       pool.query(
         `SELECT m.user_id, COALESCE(gm.display_name, u.display_name, u.username) AS display_name,
-                u.username, u.avatar_url, u.avatar_decoration_url, count(*) AS c
+                u.username, u.avatar_url, u.avatar_decoration_url, count(*) AS c,
+                COALESCE(sum(m.char_count), 0) AS chars
          FROM messages m
          JOIN guild_members gm ON gm.guild_id = m.guild_id AND gm.user_id = m.user_id
          JOIN users u ON u.user_id = m.user_id
@@ -2221,6 +2230,7 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
         avatar: (row.avatar_url as string | null) ?? null,
         avatar_decoration: (row.avatar_decoration_url as string | null) ?? null,
         count: Number(row.c),
+        chars: Number(row.chars ?? 0),
       })),
       dow: dowRes.rows.map((row) => ({ dow: Number(row.dow), count: Number(row.c) })),
       hours: hoursRes.rows.map((row) => ({ hour: Number(row.hour), count: Number(row.c) })),
@@ -2273,15 +2283,15 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
     }
 
     const ttl = isAll ? 86400 : 600;
-    const headers = { "Cache-Control": `public, max-age=${ttl}` };
-    const ckey = `graph_rel_${guild.guildId}_${isAll ? "all" : `${yearParam}_${monthParam}`}`;
+    const headers = { "Cache-Control": "no-store" };
+    const ckey = `graph_rel_v11_${guild.guildId}_${isAll ? "all" : `${yearParam}_${monthParam}`}`;
     const cached = cache.get(ckey);
     if (cached !== undefined) return jsonResponse(cached, 200, headers);
 
     const pool = deps.getPool();
     if (!pool) return jsonError(503, "Service unavailable.");
 
-    const MAX_NODES = 48;
+    const MAX_NODES = 500;
     const baseParams: unknown[] = [guild.guildId];
     let periodFilter = "";
     if (startDate && endDate) {
@@ -2309,7 +2319,8 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
     }
     const normChannel = (id: string): string => {
       let current = id;
-      for (let i = 0; i < 10 && parentOf.has(current); i += 1) current = parentOf.get(current) as string;
+      for (let i = 0; i < 10 && parentOf.has(current); i += 1)
+        current = parentOf.get(current) as string;
       return current;
     };
 
@@ -2323,7 +2334,7 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
          AND ${DELETED_USER_FILTER}
          AND gm.display_name NOT ILIKE 'deleted%user'
        GROUP BY m.user_id, gm.display_name, u.display_name, u.username, u.avatar_url, u.avatar_decoration_url, m.channel_id
-       HAVING count(*) >= 2`,
+       HAVING count(*) >= 1`,
       baseParams,
     );
 
@@ -2358,25 +2369,104 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
       node.channels.set(cid, (node.channels.get(cid) ?? 0) + count);
     }
 
-    const nodes = [...byUser.values()].sort((a, b) => b.count - a.count).slice(0, MAX_NODES);
+    const sortedByCount = [...byUser.values()].sort((a, b) => b.count - a.count);
+    let nodes = sortedByCount.slice(0, MAX_NODES);
+    // 同率の切り捨て: 500位の発言数が501位と同率なら、その発言数のメンバーは全員除外する
+    // (同率の一部だけが表示されることがないようにする)
+    const countAtBoundary = nodes[nodes.length - 1]?.count ?? 0;
+    const countAfterBoundary = sortedByCount[MAX_NODES]?.count ?? -1;
+    if (countAtBoundary > 0 && countAtBoundary === countAfterBoundary) {
+      nodes = nodes.filter((node) => node.count !== countAtBoundary);
+    }
     const nodeIds = new Set(nodes.map((node) => node.userId));
 
-    const edges: Array<{ a: string; b: string; weight: number }> = [];
-    for (let i = 0; i < nodes.length; i += 1) {
-      for (let j = i + 1; j < nodes.length; j += 1) {
-        const a = nodes[i];
-        const b = nodes[j];
-        const [smaller, larger] = a.channels.size <= b.channels.size ? [a, b] : [b, a];
-        let weight = 0;
-        for (const [cid, ca] of smaller.channels) {
-          const cb = larger.channels.get(cid);
-          if (cb) weight += Math.min(ca, cb);
-        }
-        if (weight >= 2) edges.push({ a: a.userId, b: b.userId, weight });
+    // 関係値 = 「同じ時間帯に同じチャンネルで発言した回数」(15分窓の共在回数)。
+    // メッセージの件数ではなく窓の数で数えるため、発言量そのものには依存しない。
+    const { rows: windowRows } = await pool.query(
+      `WITH slots AS (
+         SELECT DISTINCT m.channel_id,
+                FLOOR(EXTRACT(EPOCH FROM m.created_at) / 900)::bigint AS bucket,
+                m.user_id
+         FROM messages m
+         WHERE m.guild_id = $1 AND m.is_bot = FALSE ${periodFilter}
+       )
+       SELECT s1.user_id AS ua, s2.user_id AS ub, count(*) AS c
+       FROM slots s1
+       JOIN slots s2 ON s2.channel_id = s1.channel_id AND s2.bucket = s1.bucket AND s2.user_id < s1.user_id
+       GROUP BY 1, 2
+       HAVING count(*) >= 2`,
+      baseParams,
+    );
+
+    // チャンネルの一致度 (活動の何割を共通チャンネルに費やしているか 0..1)
+    const overlapFraction = (a: RelNode, b: RelNode): number => {
+      if (!a.count || !b.count) return 0;
+      const [smaller, larger] = a.channels.size <= b.channels.size ? [a, b] : [b, a];
+      let shared = 0;
+      for (const [cid, ca] of smaller.channels) {
+        const cb = larger.channels.get(cid);
+        if (cb) shared += Math.min(ca / a.count, cb / b.count);
       }
+      return shared;
+    };
+
+    const edges: Array<{ a: string; b: string; weight: number }> = [];
+    for (const raw of windowRows as Array<Record<string, unknown>>) {
+      const a = byUser.get(String(raw.ua));
+      const b = byUser.get(String(raw.ub));
+      if (!a || !b) continue;
+      if (!nodeIds.has(a.userId) || !nodeIds.has(b.userId)) continue;
+      const weight = Math.round(Number(raw.c) * (0.7 + 0.3 * overlapFraction(a, b)));
+      if (weight >= 2) edges.push({ a: a.userId, b: b.userId, weight });
     }
     edges.sort((x, y) => y.weight - x.weight);
-    const limitedEdges = edges.slice(0, 320);
+
+    // 線の本数は発言数に比例させる (logスケール: 1件なら1本、上位者は最大10本)。
+    // 各メンバーの次数が予算を超えたら、そのメンバーにとって弱い線から順に削る。
+    const countByNode = new Map(nodes.map((node) => [node.userId, node.count]));
+    const edgeBudgetOf = (userId: string): number => {
+      const count = countByNode.get(userId) ?? 0;
+      return Math.max(1, Math.min(10, Math.ceil(Math.log2(count + 1))));
+    };
+    const keyOf = (edge: { a: string; b: string }): string =>
+      edge.a < edge.b ? edge.a + "|" + edge.b : edge.b + "|" + edge.a;
+    const incident = new Map<string, Array<{ key: string; weight: number }>>();
+    for (const edge of edges) {
+      const key = keyOf(edge);
+      let la = incident.get(edge.a);
+      if (!la) {
+        la = [];
+        incident.set(edge.a, la);
+      }
+      la.push({ key, weight: edge.weight });
+      let lb = incident.get(edge.b);
+      if (!lb) {
+        lb = [];
+        incident.set(edge.b, lb);
+      }
+      lb.push({ key, weight: edge.weight });
+    }
+    // 次数が予算を超えるメンバーから弱い線を外す (他端の次数が減って波及するため反復)
+    const removedKeys = new Set<string>();
+    let changed = true;
+    let pass = 0;
+    while (changed && pass < 40) {
+      changed = false;
+      pass += 1;
+      for (const [userId, list] of incident) {
+        const budget = edgeBudgetOf(userId);
+        const alive = list.filter((entry) => !removedKeys.has(entry.key));
+        if (alive.length <= budget) continue;
+        alive.sort((x, y) => x.weight - y.weight);
+        for (const entry of alive.slice(0, alive.length - budget)) {
+          removedKeys.add(entry.key);
+          changed = true;
+        }
+      }
+    }
+    const limitedEdges = edges
+      .filter((edge) => !removedKeys.has(keyOf(edge)))
+      .sort((x, y) => y.weight - x.weight);
 
     const payload = {
       nodes: nodes.map((node) => {
@@ -2406,6 +2496,144 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
 
   app.get("/graph/relation/:year/:month", (c) => graphRelation(c, false));
   app.get("/graph/relation/total", (c) => graphRelation(c, true));
+
+  /**
+   * 指定メンバーとの絡み (交流ネットワーク用)。
+   * weight = 同じチャンネルでの発言量の重なり分 Σ min(自分の発言数, 相手の発言数)。
+   */
+  const graphPartners = async (c: Context, isAll: boolean) => {
+    const userId = c.req.param("userId") ?? "";
+    if (!/^\d+$/.test(userId)) return jsonError(422, "Invalid path parameter: user_id");
+
+    const guildOrError = await requireGuild(c);
+    if (guildOrError instanceof Response) return guildOrError;
+    const guild = guildOrError;
+
+    let startDate: Date | null = null;
+    let endDate: Date | null = null;
+    let yearParam = "";
+    let monthParam = "";
+    if (!isAll) {
+      yearParam = c.req.param("year") ?? "";
+      monthParam = c.req.param("month") ?? "";
+      const year = pathInt(yearParam);
+      const month = pathInt(monthParam);
+      if (year === null || month === null) return jsonError(422, "Invalid path parameter");
+      const bounds = monthBounds(year, month);
+      if (!Array.isArray(bounds)) return jsonError(400, bounds);
+      [startDate, endDate] = bounds;
+    }
+
+    const ttl = isAll ? 86400 : 600;
+    const headers = { "Cache-Control": "no-store" };
+    const ckey = `graph_part_${guild.guildId}_${userId}_${isAll ? "all" : `${yearParam}_${monthParam}`}`;
+    const cached = cache.get(ckey);
+    if (cached !== undefined) return jsonResponse(cached, 200, headers);
+
+    const pool = deps.getPool();
+    if (!pool) return jsonError(503, "Service unavailable.");
+
+    const baseParams: unknown[] = [guild.guildId, userId];
+    let periodFilter = "";
+    if (startDate && endDate) {
+      baseParams.push(startDate, endDate);
+      periodFilter = "AND m.created_at >= $3 AND m.created_at < $4";
+    }
+
+    const [profileRes, partnerRes] = await Promise.all([
+      pool.query(
+        `SELECT COALESCE(gm.display_name, u.display_name, u.username) AS display_name,
+                u.username, u.avatar_url, u.avatar_decoration_url, count(*) AS c
+         FROM messages m
+         JOIN users u ON u.user_id = m.user_id
+         LEFT JOIN guild_members gm ON gm.guild_id = m.guild_id AND gm.user_id = m.user_id
+         WHERE m.guild_id = $1 AND m.user_id = $2 AND m.is_bot = FALSE ${periodFilter}
+         GROUP BY u.user_id, u.display_name, u.username, u.avatar_url, u.avatar_decoration_url, gm.display_name`,
+        baseParams,
+      ),
+      pool.query(
+        `WITH own AS (
+           SELECT m.channel_id, count(*) AS c
+           FROM messages m
+           WHERE m.guild_id = $1 AND m.user_id = $2 AND m.is_bot = FALSE ${periodFilter}
+           GROUP BY m.channel_id
+         ),
+         others AS (
+           SELECT m.user_id, m.channel_id, count(*) AS c
+           FROM messages m
+           WHERE m.guild_id = $1 AND m.user_id <> $2 AND m.is_bot = FALSE ${periodFilter}
+           GROUP BY m.user_id, m.channel_id
+         )
+         SELECT o.user_id, SUM(LEAST(x.c, o.c)) AS w
+         FROM others o
+         JOIN own x ON x.channel_id = o.channel_id
+         WHERE o.c >= 1
+         GROUP BY o.user_id
+         HAVING SUM(LEAST(x.c, o.c)) >= 1
+         ORDER BY w DESC
+         LIMIT 30`,
+        baseParams,
+      ),
+    ]);
+
+    const profile = profileRes.rows[0] as Record<string, unknown> | undefined;
+    if (!profile) {
+      cache.set(ckey, { center: null, partners: [] }, ttl);
+      return jsonResponse({ center: null, partners: [] }, 200, headers);
+    }
+
+    const partnerIds = (partnerRes.rows as Array<Record<string, unknown>>).map((row) =>
+      String(row.user_id),
+    );
+    let partnerProfiles = new Map<string, Record<string, unknown>>();
+    if (partnerIds.length > 0) {
+      const { rows: profileRows } = await pool.query(
+        `SELECT gm.user_id, COALESCE(gm.display_name, u.display_name, u.username) AS display_name,
+                u.username, u.avatar_url, u.avatar_decoration_url
+         FROM guild_members gm
+         JOIN users u ON u.user_id = gm.user_id
+         WHERE gm.guild_id = $1 AND gm.user_id = ANY($2::bigint[])
+           AND u.username NOT ILIKE 'deleted%user'
+           AND gm.display_name NOT ILIKE 'deleted%user'
+           AND u.display_name NOT ILIKE 'deleted%user'`,
+        [guild.guildId, partnerIds],
+      );
+      partnerProfiles = new Map(
+        (profileRows as Array<Record<string, unknown>>).map((row) => [String(row.user_id), row]),
+      );
+    }
+
+    const centerMessages = Number(profile.c ?? 0);
+    const res = {
+      center: {
+        user_id: userId,
+        display_name: (profile.display_name as string) || "Unknown",
+        username: (profile.username as string) || "unknown",
+        avatar: (profile.avatar_url as string | null) ?? null,
+        avatar_decoration: (profile.avatar_decoration_url as string | null) ?? null,
+        count: centerMessages,
+      },
+      partners: (partnerRes.rows as Array<Record<string, unknown>>)
+        .map((row) => {
+          const id = String(row.user_id);
+          const prof = partnerProfiles.get(id);
+          return {
+            user_id: id,
+            display_name: (prof?.display_name as string) || "Unknown",
+            username: (prof?.username as string) || "unknown",
+            avatar: (prof?.avatar_url as string | null) ?? null,
+            avatar_decoration: (prof?.avatar_decoration_url as string | null) ?? null,
+            weight: Number(row.w),
+          };
+        })
+        .filter((partner) => partner.display_name !== "Unknown" || partner.username !== "unknown"),
+    };
+    cache.set(ckey, res, ttl);
+    return jsonResponse(res, 200, headers);
+  };
+
+  app.get("/graph/partners/:userId/:year/:month", (c) => graphPartners(c, false));
+  app.get("/graph/partners/:userId/total", (c) => graphPartners(c, true));
 
   /**
    * Caddy on-demand TLSのaskエンドポイント。
