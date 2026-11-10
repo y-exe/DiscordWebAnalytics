@@ -1,14 +1,30 @@
 import type { Metadata } from "next";
 import LegalPage from "@/components/LegalPage";
+import {
+  DiscordComponentEmbedScript,
+  buildComponentEmbed,
+  socialMetadata,
+} from "@/lib/discord-embed";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = socialMetadata({
   title: "プライバシーポリシー",
   description:
     "本サービスのプライバシーポリシー。Discord情報の取り扱い、Cookieの使用方針について説明します。",
-};
+  url: "https://ymkw.top/privacy",
+});
+
+const privacyEmbed = buildComponentEmbed({
+  title: "プライバシーポリシー",
+  url: "https://ymkw.top/privacy",
+  description:
+    "Discord情報の取り扱い、Cookieの使用方針について説明します。メッセージ本文は取得・保存しません。",
+});
+
 export default function PrivacyPage() {
   return (
-    <LegalPage
+    <>
+      <DiscordComponentEmbedScript payload={privacyEmbed} />
+      <LegalPage
       title="プライバシーポリシー"
       sections={[
         {
@@ -57,5 +73,6 @@ export default function PrivacyPage() {
         },
       ]}
     />
+    </>
   );
 }

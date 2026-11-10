@@ -1,14 +1,29 @@
 import type { Metadata } from "next";
 import LegalPage from "@/components/LegalPage";
+import {
+  DiscordComponentEmbedScript,
+  buildComponentEmbed,
+  socialMetadata,
+} from "@/lib/discord-embed";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = socialMetadata({
   title: "利用規約",
   description:
     "本サービスの利用規約。本サービスを利用する上での条件、禁止事項、権利帰属について定めています。",
-};
+  url: "https://ymkw.top/terms",
+});
+
+const termsEmbed = buildComponentEmbed({
+  title: "利用規約",
+  url: "https://ymkw.top/terms",
+  description: "本サービスを利用する上での条件、禁止事項、権利帰属について定めています。",
+});
+
 export default function TermsPage() {
   return (
-    <LegalPage
+    <>
+      <DiscordComponentEmbedScript payload={termsEmbed} />
+      <LegalPage
       title="利用規約"
       sections={[
         {
@@ -56,5 +71,6 @@ export default function TermsPage() {
         },
       ]}
     />
+    </>
   );
 }

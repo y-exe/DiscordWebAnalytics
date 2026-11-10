@@ -20,7 +20,28 @@ const nextConfig: NextConfig = {
         source: "/:path*",
         headers: [
           ...(process.env.NODE_ENV === "production"
-            ? [{ key: "Strict-Transport-Security", value: "max-age=31536000" }]
+            ? [
+                { key: "Strict-Transport-Security", value: "max-age=31536000" },
+                {
+                  // 開発環境はHMR/評価実行の要件が異なるため本番のみ適用する。
+                  // Next.jsのハイドレーション用インラインスクリプトとスタイルに
+                  // 'unsafe-inline' が必要。フォントはGoogle Fonts、画像はDiscord CDN。
+                  key: "Content-Security-Policy",
+                  value: [
+                    "default-src 'self'",
+                    "script-src 'self' 'unsafe-inline'",
+                    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+                    "font-src 'self' https://fonts.gstatic.com data:",
+                    "img-src 'self' data: https://cdn.discordapp.com",
+                    "connect-src 'self'",
+                    "worker-src 'self' blob:",
+                    "frame-ancestors 'none'",
+                    "object-src 'none'",
+                    "base-uri 'self'",
+                    "form-action 'self'",
+                  ].join("; "),
+                },
+              ]
             : []),
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },

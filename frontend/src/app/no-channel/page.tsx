@@ -1,5 +1,12 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowLeft, SearchX } from "lucide-react";
+
+export const metadata: Metadata = {
+  title: "データがありません",
+  description: "指定された期間のデータが存在しません。",
+  robots: { index: false, follow: false },
+};
 
 export default function NoChannelPage() {
   return (
