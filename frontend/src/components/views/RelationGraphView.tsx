@@ -12,7 +12,12 @@ import PeriodPicker from "@/components/shell/PeriodPicker";
 import { BoostBadge, ServerTagChip, UserAvatar } from "./discord/DiscordIdentity";
 import { DEFAULT_AVATAR_URL } from "./RankTopCard";
 import { fetchAPI } from "@/lib/api";
-import { formatDiscordDate, profileBannerStyle, snowflakeToDate } from "@/lib/discord-assets";
+import {
+  defaultAvatarUrl,
+  formatDiscordDate,
+  profileBannerStyle,
+  snowflakeToDate,
+} from "@/lib/discord-assets";
 import { periodLabel } from "@/lib/period";
 
 interface GraphNode {
@@ -20,6 +25,8 @@ interface GraphNode {
   display_name: string;
   username: string;
   avatar: string | null;
+  /** avatarがギルド用で404になる (退出等) 場合のメインアバター */
+  avatar_fallback?: string | null;
   count: number;
   top_channel: string | null;
 }
@@ -140,9 +147,11 @@ function loadImageElement(url: string): Promise<HTMLImageElement> {
 }
 
 /** 全アバターを円形クロップし、user_id → dataURL のマップを返す。
- * クロップ結果は (URL+リング色+太さ) ごとにキャッシュして再計算を避ける */
+ * クロップ結果は (URL+リング色+太さ) ごとにキャッシュして再計算を避ける。
+ * 読み込み失敗 (退出でギルド用アイコンが消滅等) に備え、実アバター →
+ * メインアバター → ID導出のデフォルトアバターの順で試す */
 async function cropAvatars(
-  nodes: { user_id: string; avatar: string | null }[],
+  nodes: { user_id: string; avatar: string | null; avatar_fallback?: string | null }[],
   ringFor: (userId: string) => { color: string; fraction: number },
   sizeFor: (userId: string) => number,
   onProgress?: (done: number, total: number) => void,
@@ -154,11 +163,27 @@ async function cropAvatars(
     const batch = nodes.slice(i, i + BATCH);
     await Promise.all(
       batch.map(async (node) => {
-        const url = avatarForGraph(node.avatar, sizeFor(node.user_id));
         const ring = ringFor(node.user_id);
-        const cacheKey = `${url}|${ring.color}|${Math.round(ring.fraction * 100)}`;
-        const cachedCrop = cropCache.get(cacheKey);
-        result.set(node.user_id, cachedCrop ?? (await cropUncached(url, ring)));
+        const ringKey = `${ring.color}|${Math.round(ring.fraction * 100)}`;
+        const candidates = [node.avatar, node.avatar_fallback]
+          .filter((url): url is string => Boolean(url))
+          .map((url) => avatarForGraph(url, sizeFor(node.user_id)));
+        candidates.push(defaultAvatarUrl(node.user_id));
+        let cropped = "";
+        for (const url of candidates) {
+          const cachedCrop = cropCache.get(`${url}|${ringKey}`);
+          if (cachedCrop) {
+            cropped = cachedCrop;
+            break;
+          }
+          try {
+            cropped = await cropUncached(url, ring);
+            break;
+          } catch {
+            // 次の候補へ
+          }
+        }
+        result.set(node.user_id, cropped || (await circularFallbackAvatar()));
         done += 1;
         onProgress?.(done, nodes.length);
       }),
@@ -171,13 +196,10 @@ async function cropUncached(
   url: string,
   ring: { color: string; fraction: number },
 ): Promise<string> {
-  try {
-    const cropped = cropToCircle(await loadImageElement(url), ring.color, ring.fraction);
-    cropCache.set(`${url}|${ring.color}|${Math.round(ring.fraction * 100)}`, cropped);
-    return cropped;
-  } catch {
-    return circularFallbackAvatar();
-  }
+  // 読み込み失敗は呼び出し元に投げ、フォールバック候補のチェーンで処理する
+  const cropped = cropToCircle(await loadImageElement(url), ring.color, ring.fraction);
+  cropCache.set(`${url}|${ring.color}|${Math.round(ring.fraction * 100)}`, cropped);
+  return cropped;
 }
 
 interface CommunityInfo {
@@ -992,7 +1014,7 @@ export default function RelationGraphView({
             display_name: focusedNode.display_name,
             username: focusedNode.username,
             avatar: focusedNode.avatar,
-            avatar_fallback: null,
+            avatar_fallback: focusedNode.avatar_fallback ?? null,
             banner: null,
             accent_color: null,
             avatar_decoration: null,

@@ -23,6 +23,7 @@ export function UserAvatar({
       <Avatar
         src={user.avatar}
         fallbackSrc={user.avatar_fallback}
+        userId={user.user_id}
         alt=""
         className="h-full w-full"
       />

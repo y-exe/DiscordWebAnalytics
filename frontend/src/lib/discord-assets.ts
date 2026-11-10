@@ -64,6 +64,13 @@ export function defaultBannerColor(userId: string | null | undefined): string {
   return DEFAULT_AVATAR_COLORS[index];
 }
 
+/** ユーザーIDから導出されるデフォルトのアバターURL ((user_id >> 22) % 6)。
+ * 新ユーザー名方式ではアカウント作成時にこのインデックスで色が固定される */
+export function defaultAvatarUrl(userId: string | null | undefined): string {
+  const index = defaultAvatarColorIndex(userId) ?? 1;
+  return `https://cdn.discordapp.com/embed/avatars/${index}.png`;
+}
+
 /** プロフィールバナーの背景スタイル。
  * 優先度: バナー画像 > accent_color (DB取得値) > ユーザーIDから導出したバナー色 */
 export function profileBannerStyle(opts: {

@@ -71,6 +71,9 @@ export function loadSync(client: Client, pool: Pool): void {
       () => void runLooped(enrichUserProfiles, "プロフィール補完エラー"),
       ENRICH_INTERVAL_MS,
     );
+
+    void runLooped(repairStaleAvatars, "アバター修復エラー");
+    setInterval(() => void runLooped(repairStaleAvatars, "アバター修復エラー"), ENRICH_INTERVAL_MS);
   });
 
   async function runLooped(
@@ -273,6 +276,44 @@ async function enrichUserProfiles(client: Client, pool: Pool): Promise<void> {
 
   if (updated > 0) {
     console.log(`プロフィール補完完了: ${updated}人`);
+  }
+}
+
+/** 旧同期で users.avatar_url に保存されたギルド固有アイコン (退出すると404になる) を
+ * ユーザーIDから取得したグローバルアバターで修復する */
+async function repairStaleAvatars(client: Client, pool: Pool): Promise<void> {
+  const { rows } = await pool.query(
+    `SELECT user_id FROM users WHERE avatar_url LIKE '%/guilds/%' LIMIT 100`,
+  );
+  if (rows.length === 0) return;
+
+  console.log(`ギルド固有アバターの修復開始: 対象${rows.length}人`);
+  let repaired = 0;
+  for (const row of rows) {
+    const userId = String(row.user_id);
+    try {
+      const user = await client.users.fetch(userId);
+      await pool.query(`UPDATE users SET avatar_url = $2 WHERE user_id = $1`, [
+        user.id,
+        user.displayAvatarURL(),
+      ]);
+      repaired += 1;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        "code" in error &&
+        (error as { code?: number }).code === 10013
+      ) {
+        // アカウント消滅済み: フロントがIDからデフォルトアバターを導出できるようNULLにする
+        await pool.query(`UPDATE users SET avatar_url = NULL WHERE user_id = $1`, [row.user_id]);
+        continue;
+      }
+      console.error(`アバター修復エラー ${userId}: ${error}`);
+    }
+  }
+  if (repaired > 0) {
+    console.log(`ギルド固有アバターの修復完了: ${repaired}人`);
   }
 }
 

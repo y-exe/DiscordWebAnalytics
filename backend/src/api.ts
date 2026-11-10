@@ -2284,7 +2284,7 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
 
     const ttl = isAll ? 86400 : 600;
     const headers = { "Cache-Control": "no-store" };
-    const ckey = `graph_rel_v11_${guild.guildId}_${isAll ? "all" : `${yearParam}_${monthParam}`}`;
+    const ckey = `graph_rel_v12_${guild.guildId}_${isAll ? "all" : `${yearParam}_${monthParam}`}`;
     const cached = cache.get(ckey);
     if (cached !== undefined) return jsonResponse(cached, 200, headers);
 
@@ -2326,14 +2326,15 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
 
     const { rows: activityRows } = await pool.query(
       `SELECT m.user_id, COALESCE(gm.display_name, u.display_name, u.username) AS display_name,
-              u.username, u.avatar_url, u.avatar_decoration_url, m.channel_id, count(*) AS c
+              u.username, COALESCE(gm.avatar_url, u.avatar_url) AS avatar_url,
+              u.avatar_url AS main_avatar_url, u.avatar_decoration_url, m.channel_id, count(*) AS c
        FROM messages m
        JOIN guild_members gm ON gm.guild_id = m.guild_id AND gm.user_id = m.user_id
        JOIN users u ON u.user_id = m.user_id
        WHERE m.guild_id = $1 AND m.is_bot = FALSE ${periodFilter}
          AND ${DELETED_USER_FILTER}
          AND gm.display_name NOT ILIKE 'deleted%user'
-       GROUP BY m.user_id, gm.display_name, u.display_name, u.username, u.avatar_url, u.avatar_decoration_url, m.channel_id
+       GROUP BY m.user_id, gm.display_name, u.display_name, u.username, gm.avatar_url, u.avatar_url, u.avatar_decoration_url, m.channel_id
        HAVING count(*) >= 1`,
       baseParams,
     );
@@ -2343,6 +2344,7 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
       displayName: string;
       username: string;
       avatar: string | null;
+      avatarFallback: string | null;
       avatarDecoration: string | null;
       count: number;
       channels: Map<string, number>;
@@ -2358,6 +2360,7 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
           displayName: (raw.display_name as string) || "Unknown",
           username: (raw.username as string) || "unknown",
           avatar: (raw.avatar_url as string | null) ?? null,
+          avatarFallback: (raw.main_avatar_url as string | null) ?? null,
           avatarDecoration: (raw.avatar_decoration_url as string | null) ?? null,
           count: 0,
           channels: new Map(),
@@ -2483,6 +2486,7 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
           display_name: node.displayName,
           username: node.username,
           avatar: node.avatar,
+          avatar_fallback: node.avatarFallback,
           avatar_decoration: node.avatarDecoration,
           count: node.count,
           top_channel: topChannelId ? (idToName.get(topChannelId) ?? null) : null,

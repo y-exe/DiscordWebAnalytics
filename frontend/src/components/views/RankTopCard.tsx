@@ -8,6 +8,7 @@ import {
   nameplateBackgroundStyle,
   type DiscordIdentity,
 } from "./discord/DiscordIdentity";
+import { defaultAvatarUrl } from "@/lib/discord-assets";
 
 /** 最終手段のデフォルトアバター (メインアバターも無い場合の代替) */
 export const DEFAULT_AVATAR_URL = "https://cdn.discordapp.com/embed/avatars/1.png";
@@ -15,6 +16,7 @@ export const DEFAULT_AVATAR_URL = "https://cdn.discordapp.com/embed/avatars/1.pn
 export function Avatar({
   src,
   fallbackSrc,
+  userId,
   alt = "",
   className = "",
 }: {
@@ -22,10 +24,13 @@ export function Avatar({
   /** srcが読めない場合 (退出してギルド用アイコンが消滅等) の代替URL。
    * 通常はユーザーIDから引けるメインのプロフィールアバターを指定する */
   fallbackSrc?: string | null;
+  /** デフォルトアバターをIDから導出するためのユーザーID */
+  userId?: string | null;
   alt?: string;
   className?: string;
 }) {
   const [stage, setStage] = useState<"src" | "fallback" | "default">("src");
+  const defaultSrc = userId ? defaultAvatarUrl(userId) : DEFAULT_AVATAR_URL;
 
   // src / fallbackSrcが変わったらフォールバック状態をリセットする
   useEffect(() => {
@@ -33,16 +38,14 @@ export function Avatar({
   }, [src, fallbackSrc]);
 
   const resolvedSrc =
-    stage === "fallback"
-      ? (fallbackSrc ?? DEFAULT_AVATAR_URL)
-      : (src ?? fallbackSrc ?? DEFAULT_AVATAR_URL);
+    stage === "fallback" ? (fallbackSrc ?? defaultSrc) : (src ?? fallbackSrc ?? defaultSrc);
   return (
     <img
       src={resolvedSrc}
       alt={alt}
       onError={() => {
-        if (resolvedSrc === DEFAULT_AVATAR_URL) return;
-        setStage(Boolean(fallbackSrc) ? "fallback" : "default");
+        // src → fallback → default と一段ずつ進める (fallbackも失敗したらdefaultへ)
+        setStage((prev) => (prev === "src" && fallbackSrc ? "fallback" : "default"));
       }}
       className={`shrink-0 rounded-full object-cover ${className}`}
     />
