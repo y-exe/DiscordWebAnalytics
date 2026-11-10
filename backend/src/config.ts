@@ -204,7 +204,10 @@ export async function loadConfig(options: ConfigLoadOptions = {}): Promise<AppCo
     );
   }
 
-  const adminLoginGlobalLimit = intEnv(process.env.ADMIN_LOGIN_GLOBAL_LIMIT, 20);
+  // グローバル上限は分散ブルートフォースのサーキットブレーカー。低すぎると
+  // 攻撃者が意図的に上限を消費して全員のログインを10分間ロックできる (DoS)。
+  // 通常はIPごとの5回/10分で十分に抑えられるため、グローバルは余裕を持たせる。
+  const adminLoginGlobalLimit = intEnv(process.env.ADMIN_LOGIN_GLOBAL_LIMIT, 200);
   if (adminLoginGlobalLimit < 1) {
     throw new ConfigError("ADMIN_LOGIN_GLOBAL_LIMIT must be positive.");
   }
