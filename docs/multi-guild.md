@@ -185,7 +185,7 @@ CREATE TABLE guild_members (
 | 4.8 | ホームページ独立リポジトリ化: `y-exe/ymkw.top` (Vue 3 + Vite) へ切り出し、Cloudflare Pagesで配信 | ✅ 完了 |
 | 5 | Discord OAuth: 中央コールバック + ギルドスコープセッション | 保留 |
 | 6a | インフラ: k3s manifests (Deployment/Ingress/SOPS secret/NetworkPolicy)、統合コンテナ本番デプロイ、Traefik経由SSR+API検証 | ✅ 完了 |
-| 6b | インフラ: Caddy導入 (VPS, `127.0.0.1:8444` on-demand TLS) 済み。Nginx stream SNI分岐は未実施 | 🔶 一部完了 |
+| 6b | インフラ: Caddy導入 済み。Nginx stream SNI分岐 実施済み (証明書ありの既存ホスト→nginx `127.0.0.1:8443`、それ以外→Caddy `127.0.0.1:8444`)。`analytics.ymkw.top` も既存ホスト側に登録し、`analytics.conf` のhttps側を `listen 127.0.0.1:8443` に変更 (443直バインドはstreamと競合してreloadが失敗する)。証明書自動更新 (HTTP-01 dry-run) 検証済み | ✅ 完了 (2026-11-10) |
 | 6c | analytics.ymkw.top公開: DNS-only (A→VPS IP) + nginx vhost (cloudflare-onlyなし) + certbot。外部HTTPS実測 `/`→308・`/api/health`→200・月次ページ200 | ✅ 完了 (2026-11-10) |
 | 7a | ドメイン登録フローのコード: マイグレーション011 (source/invite_code/is_active)、`/internal/caddy-ask`、`/setup subdomain` (招待コード検証) ・ `/setup domain` (DNS確認) 、失効チェッカー (6時間ごと) | ✅ 完了 (本番反映済み) |
 | 7b | Caddy側配線: askエンドポイント接続、`*.yexe.top` ワイルドカードDNS、Botコマンドの実運用 | 未 |
