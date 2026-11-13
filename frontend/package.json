@@ -32,7 +32,7 @@
     "graphology-communities-louvain": "^2.0.2",
     "graphology-layout-forceatlas2": "^0.10.1",
     "graphology-layout-noverlap": "^0.4.2",
-    "hono": "^4.13.13",
+    "hono": "^4.13.18",
     "ipaddr.js": "^2.5.0",
     "lucide-react": "^1.46.0",
     "next": "16.4.5",
